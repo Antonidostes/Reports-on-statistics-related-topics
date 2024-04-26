@@ -1,0 +1,789 @@
+---
+title: "Badanie zachowania funkcji mocy testów w zależności od wybieranych statystyk testowych"
+author: "Antoni Bieniasz"
+date: "2024-01-12"
+output:
+  pdf_document:
+    dev: cairo_pdf
+  word_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Wstęp
+
+Celem tej pracy jest testowanie hipotez statystycznych o równości rozkładów za pomocą różnych statystyk testowych. Wyznaczane będą wartości krytyczne testów oraz badane będzie zachowanie funkcji mocy analizowanych testów.
+
+# Badany problem
+
+Niech $X_1 \ldots X_n$ będą niezależnymi zmiennymi losowymi z rozkładu o ciągłej dystrybuancie F. Niech $Y_1 \dots Y_n$ będą niezależnymi zmiennymi losowymi o ciągłej dystrybuancie G. Zakładamy, że wszystkie zmienne są niezależne. Rozważamy problem testowania hipotezy:
+
+$$H_0: F = G \quad \verb|przeciwko alternatywie| \quad H_1: F \neq G$$
+na poziomie istotności $\alpha = 0.05$.
+
+# Konstrukcja poszczególnych statystyk testowych
+
+Niech $N = m + n$, a $Z = (X_1, \dots, X_m; Y_1, \ldots, Y_n)$ będzie wektorem łączącym próby. Dalej niech $R_i$ będzie rangą $Z_i$ w próbie $Z$, $i = 1, \dots, N$. Wtedy klasyczna liniowa funkcja rangowa związana z funkcją wynikową $\varphi \in L_2(0, 1)$ ma postać:
+
+$$T_\varphi = \sqrt\frac{mn}{N} \{\frac{1}{m}\sum_{i=1}^m\varphi(\frac{R_i - 0.5}{N}) - \frac{1}{n}\sum_{i=m+1}^N \varphi(\frac{R_i - 0.5}{N}) \}.$$
+Wybór funkcji $\varphi$ determinuje czułość testu opartego na $T_\varphi$. Rozważamy testy Wilcoxona, Ansari-Bradley'a, Lepage'a oraz Kołmogorowa-Smirnowa. Ten ostatni związany jest ze statystyką:
+
+$$KS = \sqrt\frac{mn}{N}sup_{x \in \mathbb{R}}|F_m(x) - G_n(x)|$$
+
+# Wyznaczanie wartości statystyk na podstawie obserwacji z rozkładu normalnego 
+
+Wygenerujemy $m = n = 20$ z rozkładu $N(0,1)$. Na ich podstawie obliczymy wartości statystyk W, AB, L oraz KS. Doświadczenie powtórzymy 10000 razy. Wyznaczymy wartości krytyczne odpowiadających im testów prawostronnych.
+
+```{r, zad_1, echo = FALSE}
+set.seed(2024)
+# Wilcoxon
+
+W1 <- function(u){
+  return(sqrt(3) * (2*u - 1))
+}
+
+Wilcoxon <- function(m, n, mi1, mi2, sigma1, sigma2, rozklad = rnorm){
+  
+  proba_1 <- rozklad(m, mi1, sigma1)
+  proba_2 <- rozklad(n, mi2, sigma2)
+  sklejony <- c(proba_1, proba_2)
+  
+  N <- m + n
+  a <- sqrt(m*n/(N))
+  
+  T_W <- a * (mean(W1((rank(sklejony)[1:m]-0.5)/N)) - 
+                   mean(W1((rank(sklejony)[(m+1):N]-0.5)/N)))
+  
+  return(T_W^2)
+}
+
+# Ansari-Bradley
+
+AB1 <- function(u){
+  return(sqrt(48) * (0.25 - abs(u - 0.5)))
+}
+
+AnsBra <- function(m, n, mi1, mi2, sigma1, sigma2, rozklad = rnorm){
+  
+  proba_1 <- rozklad(m, mi1, sigma1)
+  proba_2 <- rozklad(n, mi2, sigma2)
+  sklejony <- c(proba_1, proba_2)
+  
+  N <- m + n
+  a <- sqrt(m*n/(N))
+  
+  T_AB <- a * (mean(AB1((rank(sklejony)[1:m]-0.5)/N)) - 
+                   mean(AB1((rank(sklejony)[(m+1):N]-0.5)/N)))
+  
+  return(T_AB^2)
+}
+
+# Lepage
+
+Lepage <- function(m, n, mi1, mi2, sigma1, sigma2, rozklad = rnorm){
+   
+  proba_1 <- rozklad(m, mi1, sigma1)
+  proba_2 <- rozklad(n, mi2, sigma2)
+  sklejony <- c(proba_1, proba_2)
+  
+  N <- m + n
+  a <- sqrt(m*n/(N))
+  
+  T_W <- a * (mean(W1((rank(sklejony)[1:m]-0.5)/N)) - 
+                   mean(W1((rank(sklejony)[(m+1):N]-0.5)/N)))
+  
+  T_AB <- a * (mean(AB1((rank(sklejony)[1:m]-0.5)/N)) - 
+                   mean(AB1((rank(sklejony)[(m+1):N]-0.5)/N)))
+  
+  return(T_W^2 + T_AB^2)
+}
+
+# Kołmogorow-Smirnow
+
+Kol_smir <- function(m, n, mi1, mi2, sigma1, sigma2, rozklad = rnorm){
+  N <- m + n
+  statystyka <- sqrt(m*n/N) * ks.test(rozklad(m, mi1, sigma1), rozklad(n, mi2, sigma2))$statistic
+  return(statystyka)
+}
+
+statystyki <-matrix(0, 10000, 4)
+
+for (i in 1:10000){
+  statystyki[i, 1] <- Wilcoxon(20, 20, 0, 0, 1, 1)
+  statystyki[i, 2] <- AnsBra(20, 20, 0, 0, 1, 1)
+  statystyki[i, 3] <- Lepage(20, 20, 0, 0, 1, 1)
+  statystyki[i, 4] <- Kol_smir(20, 20, 0, 0, 1, 1)
+}
+
+W_test <- quantile(statystyki[,1], c(0.95))
+AB_test <- quantile(statystyki[,2], c(0.95))
+L_test <- quantile(statystyki[,3], c(0.95))
+KS_test <- quantile(statystyki[,4], c(0.95))
+```
+
+Z przeprowadzonej symulacji otrzymujemy, że wartości krytyczne wynoszą odpowiednio:
+
+* `r W_test` dla testu Wilcoxona,
+* `r AB_test` dla testu Ansari-Bradley'a,
+* `r L_test` dla testu Lepage'a,
+* `r round(KS_test,4)` dla testu Kołmogorowa-Smirnowa.
+
+Wiemy, że przy prawdziwości $H_0$ statystyki $W, AB$ mają asymptotyczny rozkład chi-kwadrat z jednym stopniem swobody, a statystyka $L$ ma asymptotyczny rozkład chi-kwadrat z 2 stopniami swobody. Teoretyczne wartości krytyczne wynoszą w tym wypadku 3,841 dla pierwszych dwóch z tych testów i 5,991 dla trzeciego z tych rozkładów. Zatem symulacja względnie dobrze wyznacza szukane wartości krytyczne.
+
+Zastanówmy się czy taki sposób generowania jest poprawny. Możemy stwierdzić, że tak patrząc na konstrukcje statystyki rangowej oraz statystyki Kołmogorowa-Smirnowa. W tej pierwszej na zmienność wpływają jedynie rangi. Ponieważ rangi możemy przypisywać obserwacjom z różnych rozkładów, nie tylko tym z rozkładu normalnego to możemy zastosować ten sposób generowania wartości krytycznych w przypadku innych rozkładów. Dla drugiej z tych statystyk bierzemy supremum po $x \in \mathbb{R}$ dla dystrybuant rozkładów $F$ oraz $G$ przemnożone przez skalar. Każdy rozkład ma dystrybuante, więc również jest to właściwe podejście.
+
+# Szacowanie wartości funkcji mocy analizowanych testów w zależności od zmieniającego się parametru przesunięcia
+
+Wygenerujemy $m = n = 20$ obserwacji z rozkładu normalnego, logistycznego, Cauchy'ego z parametrami przesunięcia $\mu_1, \mu_2$ oraz skali $\sigma_1, \sigma_2$, odpowiednio. Zmianom podlegać będzie parametr $\mu_2$ (w zakresie opisanym na poniższych wykresach) Na podstawie uzyskanych obserwacji obliczymy wartość statystyki W, AB, L oraz KS. Doświadczenie powtórzymy 10000 razy. Oszacujemy wartości funkcji mocy analizowanych testów a następnie narysujemy wyestymowane funkcje mocy w zależności od parametru $\mu_2$
+
+```{r, zad_2, fig.height = 4, echo = FALSE}
+n <- 10000
+
+rozmiar <- 20
+
+rozklady_1 <- c(rnorm, rlogis)
+przesuniecia_1 <- seq(0.2, 1.4, by = 0.2)
+przesuniecia_2 <- seq(0.0, 3.0, by = 0.5)
+rozklady_2 <- c(rcauchy)
+
+wyniki <- matrix(0, 21, 4)
+licznik <- 1
+
+for(rozklad in rozklady_1){
+  for(mi in przesuniecia_1){
+    W_h1 <- 0
+    AB_h1 <- 0
+    L_h1 <- 0
+    KS_h1 <- 0
+    for(i in 0:(n-1)){
+      Wil <- Wilcoxon(rozmiar, rozmiar, 0, mi, 1, 1, rozklad)
+      if(Wil > W_test){
+        W_h1 <- W_h1 + 1
+      }
+      AB <- AnsBra(rozmiar, rozmiar, 0, mi, 1, 1, rozklad)
+      if(AB > AB_test){
+        AB_h1 <- AB_h1 + 1
+      }
+      L <- Lepage(rozmiar, rozmiar, 0, mi, 1, 1, rozklad)
+      if(L > L_test){
+        L_h1 <- L_h1 + 1
+      }
+      KS <- Kol_smir(rozmiar, rozmiar, 0, mi, 1, 1, rozklad)
+      if(KS > KS_test){
+        KS_h1 <- KS_h1 + 1
+      }
+    }
+    hipoteza_1 <- c(W_h1/n, AB_h1/n, L_h1/n, KS_h1/n)
+    wyniki[licznik,] <- hipoteza_1
+    licznik <- licznik + 1
+  }
+}
+
+for(rozklad in rozklady_2){
+  for(mi in przesuniecia_2){
+    W_h1 <- 0
+    AB_h1 <- 0
+    L_h1 <- 0
+    KS_h1 <- 0
+    for(i in 0:(n-1)){
+      Wil <- Wilcoxon(rozmiar, rozmiar, 0, mi, 1, 1, rozklad)
+      if(Wil > W_test){
+        W_h1 <- W_h1 + 1
+      }
+      AB <- AnsBra(rozmiar, rozmiar, 0, mi, 1, 1, rozklad)
+      if(AB > AB_test){
+        AB_h1 <- AB_h1 + 1
+      }
+      L <- Lepage(rozmiar, rozmiar, 0, mi, 1, 1, rozklad)
+      if(L > L_test){
+        L_h1 <- L_h1 + 1
+      }
+      KS <- Kol_smir(rozmiar, rozmiar, 0, mi, 1, 1, rozklad)
+      if(KS > KS_test){
+        KS_h1 <- KS_h1 + 1
+      }
+    }
+    hipoteza_1 <- c(W_h1/n, AB_h1/n, L_h1/n, KS_h1/n)
+    wyniki[licznik,] <- hipoteza_1
+    licznik <- licznik + 1
+  }
+}
+
+normalny <- wyniki[1:7,]
+logistyczny <- wyniki[8:14,]
+Cauchy <- wyniki[15:21,]
+
+plot(przesuniecia_1, normalny[,1], ylim = c(0, 1), type="o", pch=1, col=1, xlab = "Zmieniający się parametr przesunięcia", ylab = "Moc testu", main="Moc testu w zależności od zmieniającego się parametru \n przesunięcia dla rozkładu normalnego")
+lines(przesuniecia_1, normalny[,2], pch = 2, type="o", col=2)
+lines(przesuniecia_1, normalny[,3], pch = 3, type="o", col=3)
+lines(przesuniecia_1, normalny[,4], pch = 4, type="o", col=4)
+legend(1, 0.4, c("Test Wilcoxona", "Test Ansari-Bradley'a", "Test Lepage'a", "Test Kołmogorowa-Smirnova"), pch=c(1, 2, 3, 4), cex=0.7)
+
+plot(przesuniecia_1, logistyczny[,1], ylim = c(0, 1), type="o", pch=1, col=1, xlab = "Zmieniający się parametr przesunięcia", ylab = "Moc testu", main="Moc testu w zależności od zmieniającego się parametru \n przesunięcia dla rozkładu logistycznego")
+lines(przesuniecia_1, logistyczny[,2], pch = 2, type="o", col=2)
+lines(przesuniecia_1, logistyczny[,3], pch = 3, type="o", col=3)
+lines(przesuniecia_1, logistyczny[,4], pch = 4, type="o", col=4)
+legend(1, 0.4, c("Test Wilcoxona", "Test Ansari-Bradley'a", "Test Lepage'a", "Test Kołmogorowa-Smirnova"), pch=c(1, 2, 3, 4), cex=0.7)
+
+plot(przesuniecia_2, Cauchy[,1], ylim = c(0, 1), type="o", pch=1, col=1, xlab = "Zmieniający się parametr przesunięcia", ylab = "Moc testu", main="Moc testu w zależności od zmieniającego się parametru \n przesunięcia dla rozkładu Cauchy'ego")
+lines(przesuniecia_2, Cauchy[,2], pch = 2, type="o", col=2)
+lines(przesuniecia_2, Cauchy[,3], pch = 3, type="o", col=3)
+lines(przesuniecia_2, Cauchy[,4], pch = 4, type="o", col=4)
+legend(2, 0.4, c("Test Wilcoxona", "Test Ansari-Bradley'a", "Test Lepage'a", "Test Kołmogorowa-Smirnova"), pch=c(1, 2, 3, 4), cex=0.7)
+```
+
+Na podstawie powyższych wykresów możemy stwierdzić, że moc powyższych testów rośnie wraz z rosnącym parametrem przesunięcia dla drugiej próby z rozkładu normalnego. Jest to spodziewany rezultat, jest coraz większa różnica między parametrami przesunięcia dla tych rozkładów zatem statystyka $T_\varphi$ przyjmuje coraz większe wartości, często przekraczając tą krytyczną. Największą wartość mocy uzyskujemy ogólnie dla testu Lepage'a. 
+
+# Szacowanie wartości funkcji mocy analizowanych testów w zależności od zmieniającego się parametru skali
+
+W tej części wykonamy podobne czynności co w poprzedniej części, ale będziemy manipulować parametrem skali.
+
+```{r, zad_3, fig.height = 4, echo = FALSE}
+rozklady_1 <- c(rnorm, rlogis)
+przesuniecia_1 <- seq(1, 4, by = 0.5)
+przesuniecia_2 <- seq(1, 7, by = 1)
+rozklady_2 <- c(rcauchy)
+
+wyniki <- matrix(0, 21, 4)
+licznik <- 1
+
+for(rozklad in rozklady_1){
+  for(sigma in przesuniecia_1){
+    W_h1 <- 0
+    AB_h1 <- 0
+    L_h1 <- 0
+    KS_h1 <- 0
+    for(i in 0:(n-1)){
+      Wil <- Wilcoxon(rozmiar, rozmiar, 0, 0, 1, sigma, rozklad)
+      if(Wil > W_test){
+        W_h1 <- W_h1 + 1
+      }
+      AB <- AnsBra(rozmiar, rozmiar, 0, 0, 1, sigma, rozklad)
+      if(AB > AB_test){
+        AB_h1 <- AB_h1 + 1
+      }
+      L <- Lepage(rozmiar, rozmiar, 0, 0, 1, sigma, rozklad)
+      if(L > L_test){
+        L_h1 <- L_h1 + 1
+      }
+      KS <- Kol_smir(rozmiar, rozmiar, 0, 0, 1, sigma, rozklad)
+      if(KS > KS_test){
+        KS_h1 <- KS_h1 + 1
+      }
+    }
+    hipoteza_1 <- c(W_h1/n, AB_h1/n, L_h1/n, KS_h1/n)
+    wyniki[licznik,] <- hipoteza_1
+    licznik <- licznik + 1
+  }
+}
+
+for(rozklad in rozklady_2){
+  for(sigma in przesuniecia_2){
+    W_h1 <- 0
+    AB_h1 <- 0
+    L_h1 <- 0
+    KS_h1 <- 0
+    for(i in 0:(n-1)){
+      Wil <- Wilcoxon(rozmiar, rozmiar, 0, 0, 1, sigma, rozklad)
+      if(Wil > W_test){
+        W_h1 <- W_h1 + 1
+      }
+      AB <- AnsBra(rozmiar, rozmiar, 0, 0, 1, sigma, rozklad)
+      if(AB > AB_test){
+        AB_h1 <- AB_h1 + 1
+      }
+      L <- Lepage(rozmiar, rozmiar, 0, 0, 1, sigma, rozklad)
+      if(L > L_test){
+        L_h1 <- L_h1 + 1
+      }
+      KS <- Kol_smir(rozmiar, rozmiar, 0, 0, 1, sigma, rozklad)
+      if(KS > KS_test){
+        KS_h1 <- KS_h1 + 1
+      }
+    }
+    hipoteza_1 <- c(W_h1/n, AB_h1/n, L_h1/n, KS_h1/n)
+    wyniki[licznik,] <- hipoteza_1
+    licznik <- licznik + 1
+  }
+}
+
+normalny <- wyniki[1:7,]
+logistyczny <- wyniki[8:14,]
+Cauchy <- wyniki[15:21,]
+
+plot(przesuniecia_1, normalny[,1], ylim = c(0, 1), type="o", pch=1, col=1, xlab = "Zmieniający się parametr skali", ylab = "Moc testu", main="Moc testu w zależności od zmieniającego się parametru \n skali dla rozkładu normalnego")
+lines(przesuniecia_1, normalny[,2], pch = 2, type="o", col=2)
+lines(przesuniecia_1, normalny[,3], pch = 3, type="o", col=3)
+lines(przesuniecia_1, normalny[,4], pch = 4, type="o", col=4)
+legend(1, 1, c("Test Wilcoxona", "Test Ansari-Bradley'a", "Test Lepage'a", "Test Kołmogorowa-Smirnova"), pch=c(1, 2, 3, 4), cex=0.7)
+
+plot(przesuniecia_1, logistyczny[,1], ylim = c(0, 1), type="o", pch=1, col=1, xlab = "Zmieniający się parametr skali", ylab = "Moc testu", main="Moc testu w zależności od zmieniającego się parametru \n skali dla rozkładu logistycznego")
+lines(przesuniecia_1, logistyczny[,2], pch = 2, type="o", col=2)
+lines(przesuniecia_1, logistyczny[,3], pch = 3, type="o", col=3)
+lines(przesuniecia_1, logistyczny[,4], pch = 4, type="o", col=4)
+legend(1, 1, c("Test Wilcoxona", "Test Ansari-Bradley'a", "Test Lepage'a", "Test Kołmogorowa-Smirnova"), pch=c(1, 2, 3, 4), cex=0.7)
+
+plot(przesuniecia_2, Cauchy[,1], ylim = c(0, 1), type="o", pch=1, col=1, xlab = "Zmieniający się parametr skali", ylab = "Moc testu", main="Moc testu w zależności od zmieniającego się parametru \n skali dla rozkładu Cauchy'ego")
+lines(przesuniecia_2, Cauchy[,2], pch = 2, type="o", col=2)
+lines(przesuniecia_2, Cauchy[,3], pch = 3, type="o", col=3)
+lines(przesuniecia_2, Cauchy[,4], pch = 4, type="o", col=4)
+legend(1, 1, c("Test Wilcoxona", "Test Ansari-Bradley'a", "Test Lepage'a", "Test Kołmogorowa-Smirnova"), pch=c(1, 2, 3, 4), cex=0.7)
+```
+
+W tym przypadku moce analizowanych testów są dla każdego rozkładu znacznie mniejsze, poniżej 0.1, jedynie dla testu Kołmogorowa - Smirnowa osiągamy wartości zbliżone do 0.4. Widzimy, że wartości mocy rosną wraz ze zwiększającym się parametrem skali jednak nie są to bardzo gwałtowne przyrosty. Mniejszą częstotliwość odrzucania $H_1$ można tłumaczyć faktem, że rozkłady z obu prób mają te same parametry przesunięcia, więc najwięcej obserwacji dla ich obydwu pochodzi z tego samego obszaru. Większe wartości statystyki $KS$ można tłumaczyć inną konstrukcją tej statystyki w stosunku do innych (bierzemy supremum po x, dla obydwu dystrybuant empirycznych).
+
+# Szacowanie wartości funkcji mocy analizowanych testów w zależności od zmieniającego się naraz parametru przesunięcia oraz skali
+
+Teraz będziemy dokonywać zmian w wartości parametru przesunięcia oraz skali jednocześnie.
+
+```{r, zad_4, fig.height = 4, echo = FALSE}
+rozklady_1 <- c(rnorm, rlogis)
+rozklady_2 <- c(rcauchy)
+
+przesuniecia_1 <- seq(0.2, 1.4, by = 0.2)
+skale_1 <- seq(1, 4, by = 0.5)
+przesuniecia_2 <- seq(0.0, 3.0, by = 0.5)
+skale_2 <- seq(1, 7, by = 1)
+
+pary1 <- c() 
+for(k in 1:7){
+  pary1 <- c(pary1, c(przesuniecia_1[k], skale_1[k]))
+}
+
+pary2 <- c() 
+for(k in 1:7){
+  pary2 <- c(pary2, c(przesuniecia_2[k], skale_2[k]))
+}
+
+wyniki <- matrix(0, 21, 4)
+licznik <- 1
+
+for(rozklad in rozklady_1){
+  for(j in 1:7){
+    W_h1 <- 0
+    AB_h1 <- 0
+    L_h1 <- 0
+    KS_h1 <- 0
+    for(i in 0:(n-1)){
+      Wil <- Wilcoxon(rozmiar, rozmiar, 0, pary1[2*j - 1], 1, pary1[2*j], rozklad)
+      if(Wil > W_test){
+        W_h1 <- W_h1 + 1
+      }
+      AB <- AnsBra(rozmiar, rozmiar, 0, pary1[2*j - 1], 1, pary1[2*j], rozklad)
+      if(AB > AB_test){
+        AB_h1 <- AB_h1 + 1
+      }
+      L <- Lepage(rozmiar, rozmiar, 0, pary1[2*j - 1], 1, pary1[2*j], rozklad)
+      if(L > L_test){
+        L_h1 <- L_h1 + 1
+      }
+      KS <- Kol_smir(rozmiar, rozmiar, 0, pary1[2*j - 1], 1, pary1[2*j], rozklad)
+      if(KS > KS_test){
+        KS_h1 <- KS_h1 + 1
+      }
+    }
+    hipoteza_1 <- c(W_h1/n, AB_h1/n, L_h1/n, KS_h1/n)
+    wyniki[licznik,] <- hipoteza_1
+    licznik <- licznik + 1
+  }
+}
+
+for(rozklad in rozklady_2){
+  for(j in 1:7){
+    W_h1 <- 0
+    AB_h1 <- 0
+    L_h1 <- 0
+    KS_h1 <- 0
+    for(i in 0:(n-1)){
+      Wil <- Wilcoxon(rozmiar, rozmiar, 0, pary2[2*j - 1], 1,  pary2[2*j], rozklad)
+      if(Wil > W_test){
+        W_h1 <- W_h1 + 1
+      }
+      AB <- AnsBra(rozmiar, rozmiar, 0, pary2[2*j - 1], 1, pary2[2*j], rozklad)
+      if(AB > AB_test){
+        AB_h1 <- AB_h1 + 1
+      }
+      L <- Lepage(rozmiar, rozmiar, 0, pary1[2*j - 1], 1, pary1[2*j], rozklad)
+      if(L > L_test){
+        L_h1 <- L_h1 + 1
+      }
+      KS <- Kol_smir(rozmiar, rozmiar, 0, pary2[2*j - 1], 1, pary2[2*j], rozklad)
+      if(KS > KS_test){
+        KS_h1 <- KS_h1 + 1
+      }
+    }
+    hipoteza_1 <- c(W_h1/n, AB_h1/n, L_h1/n, KS_h1/n)
+    wyniki[licznik,] <- hipoteza_1
+    licznik <- licznik + 1
+  }
+}
+
+normalny <- wyniki[1:7,]
+logistyczny <- wyniki[8:14,]
+Cauchy <- wyniki[15:21,]
+
+plot(przesuniecia_1, normalny[,1], ylim = c(0, 1), type="o", pch=1, col=1, xlab = "Zmieniający się parametr przesunięcia i skali", ylab = "Moc testu", main="Moc testu w zależności od zmieniającego się parametru \n przesunięcia oraz skali dla rozkładu normalnego",  xaxt = "n")
+axis(1, at = przesuniecia_1, labels = paste(przesuniecia_1, ",", skale_1))
+lines(przesuniecia_1, normalny[,2], pch = 2, type="o", col=2)
+lines(przesuniecia_1, normalny[,3], pch = 3, type="o", col=3)
+lines(przesuniecia_1, normalny[,4], pch = 4, type="o", col=4)
+legend(0.2, 1, c("Test Wilcoxona", "Test Ansari-Bradley'a", "Test Lepage'a", "Test Kołmogorowa-Smirnova"), pch=c(1, 2, 3, 4), cex=0.7)
+
+plot(przesuniecia_1, logistyczny[,1], ylim = c(0, 1), type="o", pch=1, col=1, xlab = "Zmieniający się parametr przesunięcia i skali", ylab = "Moc testu", main="Moc testu w zależności od zmieniającego się parametru \n przesunięcia oraz skali dla rozkładu logistycznego",  xaxt = "n")
+axis(1, at = przesuniecia_1, labels = paste(przesuniecia_1, ",", skale_1))
+lines(przesuniecia_1, logistyczny[,2], pch = 2, type="o", col=2)
+lines(przesuniecia_1, logistyczny[,3], pch = 3, type="o", col=3)
+lines(przesuniecia_1, logistyczny[,4], pch = 4, type="o", col=4)
+legend(0.2, 1, c("Test Wilcoxona", "Test Ansari-Bradley'a", "Test Lepage'a", "Test Kołmogorowa-Smirnova"), pch=c(1, 2, 3, 4), cex=0.7)
+
+plot(przesuniecia_2, Cauchy[,1], ylim = c(0, 1), type="o", pch=1, col=1, xlab = "Zmieniający się parametr przesunięcia i skali", ylab = "Moc testu", main="Moc testu w zależności od zmieniającego się parametru \n przesunięcia oraz skali dla rozkładu Cauchy'ego",  xaxt = "n")
+axis(1, at = przesuniecia_2, labels = paste(przesuniecia_2, ",", skale_2))
+lines(przesuniecia_2, Cauchy[,2], pch = 2, type="o", col=2)
+lines(przesuniecia_2, Cauchy[,3], pch = 3, type="o", col=3)
+lines(przesuniecia_2, Cauchy[,4], pch = 4, type="o", col=4)
+legend(0.2, 1, c("Test Wilcoxona", "Test Ansari-Bradley'a", "Test Lepage'a", "Test Kołmogorowa-Smirnova"), pch=c(1, 2, 3, 4), cex=0.7)
+```
+
+Przy manipulowaniu oboma parametrami uzyskujemy wartości mocy większe niż tylko dla zmiany parametru skali, ale mniejsze niż dla zmiany tylko parametru przesunięcia. Takie pośrednie wartości można tłumaczyć tym, że zwiększający się parametr przesunięcia sprawia, że najwięcej obserwacji z tej drugiej próby oddala się od obszaru, w którym jest najwięcej obserwacji dla tej pierwszej próby, ale zwiększający się parametr skali sprawia, że więcej obserwacji może znajdować się dalej od średniej rozkładu. Ponownie staytstyka Kołmogorowa-Smirnowa daje największe wartości mocy. 
+
+# Wyznaczanie wartości statystyk na podstawie obserwacji z rozkładu normalnego dla n=m=50
+
+Wygenerujemy tym razem $m = n = 50$ obserwacji z rozkładu $N(0,1)$. Na ich podstawie obliczymy wartości statystyk W, AB, L oraz KS. Doświadczenie powtórzymy 10000 razy. Wyznaczymy wartości krytyczne odpowiadających im testów prawostronnych.
+
+```{r, zad_5, echo=FALSE}
+statystyki <-matrix(0, 10000, 4)
+
+for (i in 1:10000){
+  statystyki[i, 1] <- Wilcoxon(50, 50, 0, 0, 1, 1)
+  statystyki[i, 2] <- AnsBra(50, 50, 0, 0, 1, 1)
+  statystyki[i, 3] <- Lepage(50, 50, 0, 0, 1, 1)
+  statystyki[i, 4] <- Kol_smir(50, 50, 0, 0, 1, 1)
+}
+
+W_test <- unname(quantile(statystyki[,1], c(0.95)))
+AB_test <- unname(quantile(statystyki[,2], c(0.95)))
+L_test <- unname(quantile(statystyki[,3], c(0.95)))
+KS_test <- unname(quantile(statystyki[,4], c(0.95)))
+```
+
+Z przeprowadzonej symulacji otrzymujemy, że wartości krytyczne wynoszą odpowiednio:
+
+* `r W_test` dla testu Wilcoxona,
+* `r round(AB_test,5)` dla testu Ansari-Bradley'a,
+* `r round(L_test,5)` dla testu Lepage'a,
+* `r round(KS_test,4)` dla testu Kołmogorowa-Smirnowa.
+
+# Powtórzenie poprzednich części dla n=m=50
+
+Powtórzymy teraz wykonywane wcześniej czynności dla większych prób.
+
+# Zmieniający się parametr przesunięcia
+
+```{r, zad_6_2, fig.height = 4, echo = FALSE}
+rozmiar <- 50
+
+rozklady_1 <- c(rnorm, rlogis)
+przesuniecia_1 <- seq(0.2, 1.4, by = 0.2)
+przesuniecia_2 <- seq(0.0, 3.0, by = 0.5)
+rozklady_2 <- c(rcauchy)
+
+wyniki <- matrix(0, 21, 4)
+licznik <- 1
+
+for(rozklad in rozklady_1){
+  for(mi in przesuniecia_1){
+    W_h1 <- 0
+    AB_h1 <- 0
+    L_h1 <- 0
+    KS_h1 <- 0
+    for(i in 0:(n-1)){
+      Wil <- Wilcoxon(rozmiar, rozmiar, 0, mi, 1, 1, rozklad)
+      if(Wil > W_test){
+        W_h1 <- W_h1 + 1
+      }
+      AB <- AnsBra(rozmiar, rozmiar, 0, mi, 1, 1, rozklad)
+      if(AB > AB_test){
+        AB_h1 <- AB_h1 + 1
+      }
+      L <- Lepage(rozmiar, rozmiar, 0, mi, 1, 1, rozklad)
+      if(L > L_test){
+        L_h1 <- L_h1 + 1
+      }
+      KS <- Kol_smir(rozmiar, rozmiar, 0, mi, 1, 1, rozklad)
+      if(KS > KS_test){
+        KS_h1 <- KS_h1 + 1
+      }
+    }
+    hipoteza_1 <- c(W_h1/n, AB_h1/n, L_h1/n, KS_h1/n)
+    wyniki[licznik,] <- hipoteza_1
+    licznik <- licznik + 1
+  }
+}
+
+for(rozklad in rozklady_2){
+  for(mi in przesuniecia_2){
+    W_h1 <- 0
+    AB_h1 <- 0
+    L_h1 <- 0
+    KS_h1 <- 0
+    for(i in 0:(n-1)){
+      Wil <- Wilcoxon(rozmiar, rozmiar, 0, mi, 1, 1, rozklad)
+      if(Wil > W_test){
+        W_h1 <- W_h1 + 1
+      }
+      AB <- AnsBra(rozmiar, rozmiar, 0, mi, 1, 1, rozklad)
+      if(AB > AB_test){
+        AB_h1 <- AB_h1 + 1
+      }
+      L <- Lepage(rozmiar, rozmiar, 0, mi, 1, 1, rozklad)
+      if(L > L_test){
+        L_h1 <- L_h1 + 1
+      }
+      KS <- Kol_smir(rozmiar, rozmiar, 0, mi, 1, 1, rozklad)
+      if(KS > KS_test){
+        KS_h1 <- KS_h1 + 1
+      }
+    }
+    hipoteza_1 <- c(W_h1/n, AB_h1/n, L_h1/n, KS_h1/n)
+    wyniki[licznik,] <- hipoteza_1
+    licznik <- licznik + 1
+  }
+}
+
+normalny <- wyniki[1:7,]
+logistyczny <- wyniki[8:14,]
+Cauchy <- wyniki[15:21,]
+
+plot(przesuniecia_1, normalny[,1], ylim = c(0, 1), type="o", pch=1, col=1, xlab = "Zmieniający się parametr przesunięcia", ylab = "Moc testu", main="Moc testu w zależności od zmieniającego się parametru \n przesunięcia dla rozkładu normalnego")
+lines(przesuniecia_1, normalny[,2], pch = 2, type="o", col=2)
+lines(przesuniecia_1, normalny[,3], pch = 3, type="o", col=3)
+lines(przesuniecia_1, normalny[,4], pch = 4, type="o", col=4)
+legend(1, 0.3, c("Test Wilcoxona", "Test Ansari-Bradley'a", "Test Lepage'a", "Test Kołmogorowa-Smirnova"), pch=c(1, 2, 3, 4), cex=0.7)
+
+plot(przesuniecia_1, logistyczny[,1], ylim = c(0, 1), type="o", pch=1, col=1, xlab = "Zmieniający się parametr przesunięcia", ylab = "Moc testu", main="Moc testu w zależności od zmieniającego się parametru \n przesunięcia dla rozkładu logistycznego")
+lines(przesuniecia_1, logistyczny[,2], pch = 2, type="o", col=2)
+lines(przesuniecia_1, logistyczny[,3], pch = 3, type="o", col=3)
+lines(przesuniecia_1, logistyczny[,4], pch = 4, type="o", col=4)
+legend(1, 0.3, c("Test Wilcoxona", "Test Ansari-Bradley'a", "Test Lepage'a", "Test Kołmogorowa-Smirnova"), pch=c(1, 2, 3, 4), cex=0.7)
+
+plot(przesuniecia_2, Cauchy[,1], ylim = c(0, 1), type="o", pch=1, col=1, xlab = "Zmieniający się parametr przesunięcia", ylab = "Moc testu", main="Moc testu w zależności od zmieniającego się parametru \n przesunięcia dla rozkładu Cauchy'ego")
+lines(przesuniecia_2, Cauchy[,2], pch = 2, type="o", col=2)
+lines(przesuniecia_2, Cauchy[,3], pch = 3, type="o", col=3)
+lines(przesuniecia_2, Cauchy[,4], pch = 4, type="o", col=4)
+legend(2, 0.3, c("Test Wilcoxona", "Test Ansari-Bradley'a", "Test Lepage'a", "Test Kołmogorowa-Smirnova"), pch=c(1, 2, 3, 4), cex=0.7)
+```
+
+W porównaniu do n = m = 20 mamy większe wartości funkcji mocy dla odpowiednich parametrów przesunięcia. Jest prawdopodobnie spowodowane faktem, że dla n = m = 50 odpowiednia różnica w statystyce $T_\varphi$ staje się większa jeżeli dane rozkłady są różne, a więc wartość $T_\varphi$ rośnie. 
+
+# Zmieniający się parametr skali
+
+```{r, zad_6_3, fig.height = 4, echo = FALSE}
+
+rozklady_1 <- c(rnorm, rlogis)
+przesuniecia_1 <- seq(1, 4, by = 0.5)
+przesuniecia_2 <- seq(1, 7, by = 1)
+rozklady_2 <- c(rcauchy)
+
+wyniki <- matrix(0, 21, 4)
+licznik <- 1
+
+for(rozklad in rozklady_1){
+  for(sigma in przesuniecia_1){
+    W_h1 <- 0
+    AB_h1 <- 0
+    L_h1 <- 0
+    KS_h1 <- 0
+    for(i in 0:(n-1)){
+      Wil <- Wilcoxon(rozmiar, rozmiar, 0, 0, 1, sigma, rozklad)
+      if(Wil > unname(W_test)){
+        W_h1 <- W_h1 + 1
+      }
+      AB <- AnsBra(rozmiar, rozmiar, 0, 0, 1, sigma, rozklad)
+      if(AB > unname(AB_test)){
+        AB_h1 <- AB_h1 + 1
+      }
+      L <- Lepage(rozmiar, rozmiar, 0, 0, 1, sigma, rozklad)
+      if(L > unname(L_test)){
+        L_h1 <- L_h1 + 1
+      }
+      KS <- Kol_smir(rozmiar, rozmiar, 0, 0, 1, sigma, rozklad)
+      if(KS > unname(KS_test)){
+        KS_h1 <- KS_h1 + 1
+      }
+    }
+    hipoteza_1 <- c(W_h1/n, AB_h1/n, L_h1/n, KS_h1/n)
+    wyniki[licznik,] <- hipoteza_1
+    licznik <- licznik + 1
+  }
+}
+
+for(rozklad in rozklady_2){
+  for(sigma in przesuniecia_2){
+    W_h1 <- 0
+    AB_h1 <- 0
+    L_h1 <- 0
+    KS_h1 <- 0
+    for(i in 0:(n-1)){
+      Wil <- Wilcoxon(rozmiar, rozmiar, 0, 0, 1, sigma, rozklad)
+      if(Wil > unname(W_test)){
+        W_h1 <- W_h1 + 1
+      }
+      AB <- AnsBra(rozmiar, rozmiar, 0, 0, 1, sigma, rozklad)
+      if(AB > unname(AB_test)){
+        AB_h1 <- AB_h1 + 1
+      }
+      L <- Lepage(rozmiar, rozmiar, 0, 0, 1, sigma, rozklad)
+      if(L > unname(L_test)){
+        L_h1 <- L_h1 + 1
+      }
+      KS <- Kol_smir(rozmiar, rozmiar, 0, 0, 1, sigma, rozklad)
+      if(KS > unname(KS_test)){
+        KS_h1 <- KS_h1 + 1
+      }
+    }
+    hipoteza_1 <- c(W_h1/n, AB_h1/n, L_h1/n, KS_h1/n)
+    wyniki[licznik,] <- hipoteza_1
+    licznik <- licznik + 1
+  }
+}
+
+normalny <- wyniki[1:7,]
+logistyczny <- wyniki[8:14,]
+Cauchy <- wyniki[15:21,]
+
+plot(przesuniecia_1, normalny[,1], ylim = c(0, 1), type="o", pch=1, col=1, xlab = "Zmieniający się parametr skali", ylab = "Moc testu", main="Moc testu w zależności od zmieniającego się parametru \n skali dla rozkładu normalnego")
+lines(przesuniecia_1, normalny[,2], pch = 2, type="o", col=2)
+lines(przesuniecia_1, normalny[,3], pch = 3, type="o", col=3)
+lines(przesuniecia_1, normalny[,4], pch = 4, type="o", col=4)
+legend(1, 1, c("Test Wilcoxona", "Test Ansari-Bradley'a", "Test Lepage'a", "Test Kołmogorowa-Smirnova"), pch=c(1, 2, 3, 4), cex=0.7)
+
+plot(przesuniecia_1, logistyczny[,1], ylim = c(0, 1), type="o", pch=1, col=1, xlab = "Zmieniający się parametr skali", ylab = "Moc testu", main="Moc testu w zależności od zmieniającego się parametru \n skali dla rozkładu logistycznego")
+lines(przesuniecia_1, logistyczny[,2], pch = 2, type="o", col=2)
+lines(przesuniecia_1, logistyczny[,3], pch = 3, type="o", col=3)
+lines(przesuniecia_1, logistyczny[,4], pch = 4, type="o", col=4)
+legend(1, 1, c("Test Wilcoxona", "Test Ansari-Bradley'a", "Test Lepage'a", "Test Kołmogorowa-Smirnova"), pch=c(1, 2, 3, 4), cex=0.7)
+
+plot(przesuniecia_2, Cauchy[,1], ylim = c(0, 1), type="o", pch=1, col=1, xlab = "Zmieniający się parametr skali", ylab = "Moc testu", main="Moc testu w zależności od zmieniającego się parametru \n skali dla rozkładu Cauchy'ego")
+lines(przesuniecia_2, Cauchy[,2], pch = 2, type="o", col=2)
+lines(przesuniecia_2, Cauchy[,3], pch = 3, type="o", col=3)
+lines(przesuniecia_2, Cauchy[,4], pch = 4, type="o", col=4)
+legend(1, 1, c("Test Wilcoxona", "Test Ansari-Bradley'a", "Test Lepage'a", "Test Kołmogorowa-Smirnova"), pch=c(1, 2, 3, 4), cex=0.7)
+```
+
+Dla zmieniającego się samego parametru skali przy zwiększeniu liczebności próby moc testu dla statystyki KS dąży do 1 przy coraz większych wartościach $\sigma_2$. Dla innych testów utrzymuje się na poziomie niewiele większym od zera. Widać tu bardzo jak inny typ konstrukcji statystyk testowych wpływa na wyniki. Jednak w rzeczywistości wiemy, że badane rozkłady są różne, stąd możemy stwierdzić, że statystyka KS w tym przypadku jest bardzo skuteczna.
+
+# Zmieniający się parametr przesunięcia oraz skali
+
+```{r, zad_6_4, fig.height = 4, echo = FALSE}
+rozklady_1 <- c(rnorm, rlogis)
+rozklady_2 <- c(rcauchy)
+
+przesuniecia_1 <- seq(0.2, 1.4, by = 0.2)
+skale_1 <- seq(1, 4, by = 0.5)
+przesuniecia_2 <- seq(0.0, 3.0, by = 0.5)
+skale_2 <- seq(1, 7, by = 1)
+
+pary1 <- c() 
+for(k in 1:7){
+  pary1 <- c(pary1, c(przesuniecia_1[k], skale_1[k]))
+}
+
+pary2 <- c() 
+for(k in 1:7){
+  pary2 <- c(pary2, c(przesuniecia_2[k], skale_2[k]))
+}
+
+wyniki <- matrix(0, 21, 4)
+licznik <- 1
+
+for(rozklad in rozklady_1){
+  for(j in 1:7){
+    W_h1 <- 0
+    AB_h1 <- 0
+    L_h1 <- 0
+    KS_h1 <- 0
+    for(i in 0:(n-1)){
+      Wil <- Wilcoxon(rozmiar, rozmiar, 0, pary1[2*j - 1], 1, pary1[2*j], rozklad)
+      if(Wil > W_test){
+        W_h1 <- W_h1 + 1
+      }
+      AB <- AnsBra(rozmiar, rozmiar, 0, pary1[2*j - 1], 1, pary1[2*j], rozklad)
+      if(AB > AB_test){
+        AB_h1 <- AB_h1 + 1
+      }
+      L <- Lepage(rozmiar, rozmiar, 0, pary1[2*j - 1], 1, pary1[2*j], rozklad)
+      if(L > L_test){
+        L_h1 <- L_h1 + 1
+      }
+      KS <- Kol_smir(rozmiar, rozmiar, 0, pary1[2*j - 1], 1, pary1[2*j], rozklad)
+      if(KS > KS_test){
+        KS_h1 <- KS_h1 + 1
+      }
+    }
+    hipoteza_1 <- c(W_h1/n, AB_h1/n, L_h1/n, KS_h1/n)
+    wyniki[licznik,] <- hipoteza_1
+    licznik <- licznik + 1
+  }
+}
+
+for(rozklad in rozklady_2){
+  for(j in 1:7){
+    W_h1 <- 0
+    AB_h1 <- 0
+    L_h1 <- 0
+    KS_h1 <- 0
+    for(i in 0:(n-1)){
+      Wil <- Wilcoxon(rozmiar, rozmiar, 0, pary2[2*j - 1], 1,  pary2[2*j], rozklad)
+      if(Wil > W_test){
+        W_h1 <- W_h1 + 1
+      }
+      AB <- AnsBra(rozmiar, rozmiar, 0, pary2[2*j - 1], 1, pary2[2*j], rozklad)
+      if(AB > AB_test){
+        AB_h1 <- AB_h1 + 1
+      }
+      L <- Lepage(rozmiar, rozmiar, 0, pary2[2*j - 1], 1, pary2[2*j], rozklad)
+      if(L > L_test){
+        L_h1 <- L_h1 + 1
+      }
+      KS <- Kol_smir(rozmiar, rozmiar, 0, pary2[2*j - 1], 1, pary2[2*j], rozklad)
+      if(KS > KS_test){
+        KS_h1 <- KS_h1 + 1
+      }
+    }
+    hipoteza_1 <- c(W_h1/n, AB_h1/n, L_h1/n, KS_h1/n)
+    wyniki[licznik,] <- hipoteza_1
+    licznik <- licznik + 1
+  }
+}
+
+normalny <- wyniki[1:7,]
+logistyczny <- wyniki[8:14,]
+Cauchy <- wyniki[15:21,]
+
+plot(przesuniecia_1, normalny[,1], ylim = c(0, 1), type="o", pch=1, col=1, xlab = "Zmieniający się parametr przesunięcia i skali", ylab = "Moc testu", main="Moc testu w zależności od zmieniającego się parametru \n przesunięcia oraz skali dla rozkładu normalnego",  xaxt = "n")
+axis(1, at = przesuniecia_1, labels = paste(przesuniecia_1, ",", skale_1))
+lines(przesuniecia_1, normalny[,2], pch = 2, type="o", col=2)
+lines(przesuniecia_1, normalny[,3], pch = 3, type="o", col=3)
+lines(przesuniecia_1, normalny[,4], pch = 4, type="o", col=4)
+legend(0.2, 1, c("Test Wilcoxona", "Test Ansari-Bradley'a", "Test Lepage'a", "Test Kołmogorowa-Smirnova"), pch=c(1, 2, 3, 4), cex=0.7)
+
+plot(przesuniecia_1, logistyczny[,1], ylim = c(0, 1), type="o", pch=1, col=1, xlab = "Zmieniający się parametr przesunięcia i skali", ylab = "Moc testu", main="Moc testu w zależności od zmieniającego się parametru \n przesunięcia oraz skali dla rozkładu logistycznego",  xaxt = "n")
+axis(1, at = przesuniecia_1, labels = paste(przesuniecia_1, ",", skale_1))
+lines(przesuniecia_1, logistyczny[,2], pch = 2, type="o", col=2)
+lines(przesuniecia_1, logistyczny[,3], pch = 3, type="o", col=3)
+lines(przesuniecia_1, logistyczny[,4], pch = 4, type="o", col=4)
+legend(0.2, 1, c("Test Wilcoxona", "Test Ansari-Bradley'a", "Test Lepage'a", "Test Kołmogorowa-Smirnova"), pch=c(1, 2, 3, 4), cex=0.7)
+
+plot(przesuniecia_2, Cauchy[,1], ylim = c(0, 1), type="o", pch=1, col=1, xlab = "Zmieniający się parametr przesunięcia i skali", ylab = "Moc testu", main="Moc testu w zależności od zmieniającego się parametru \n przesunięcia oraz skali dla rozkładu Cauchy'ego",  xaxt = "n")
+axis(1, at = przesuniecia_2, labels = paste(przesuniecia_2, ",", skale_2))
+lines(przesuniecia_2, Cauchy[,2], pch = 2, type="o", col=2)
+lines(przesuniecia_2, Cauchy[,3], pch = 3, type="o", col=3)
+lines(przesuniecia_2, Cauchy[,4], pch = 4, type="o", col=4)
+legend(0.2, 1, c("Test Wilcoxona", "Test Ansari-Bradley'a", "Test Lepage'a", "Test Kołmogorowa-Smirnova"), pch=c(1, 2, 3, 4), cex=0.7)
+```
+
+Przy zmianach obydwu parametrów moce testu największe są dla statystyk Kołmogorowa-Smirnowa, potem dla Lepage'a, a mniejsze dla statystyk Wilcoxona oraz Ansari-Bradley'a. Ogólnie moce testów ponownie są mniejsze niż dla zmieniającego się samego parametru przesunięcia, ale większe niż dla tylko zmieniającego się parametru skali.
+
+

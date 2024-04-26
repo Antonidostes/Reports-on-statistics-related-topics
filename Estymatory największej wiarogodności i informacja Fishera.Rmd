@@ -1,0 +1,866 @@
+---
+title: "Estymatory największej wiarogodności i informacja Fishera"
+author: "Antoni Bieniasz"
+date: "2023-11-14"
+output:
+  pdf_document:
+    dev: cairo_pdf
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+```{r, warning=FALSE, echo = FALSE}
+library(VGAM)
+library(data.table)
+library(ggplot2)
+```
+
+
+
+# Wyznaczanie estymatora największej wiarogodności dla rozkładu dwumianowego
+
+Wygenerujemy $n$ obserwacji z rozkładu dwumianowego $b(5, p)$ dla $n \in \{20, 50, 100\}$ oraz dla każdego $n$ dla $p \in \{0.1, 0.3, 0.5, 0.7, 0.9\}$. Będziemy chcieli na podstawie danych prób wyznaczyć wartość estymatora największej wiarogodności (ENW) wielkości $P(X \geq 3)$, gdzie $X \tilde{} b(5,p)$. Powtórzymy dane doświadczenie 10000 razy. Oszacujemy wariancję, błąd średniokwadratowy oraz wariancję analizowanego estymatora. Będziemy starali się sprawdzić jak wybór parametru p, a także rozmiar próby wpływa na wyniki. Skorzystamy z twierdzenia z teorii statystyki, mówiącego, że dla próby z rozkładu o zadanej gęstości $f(x, \theta)$, dowolnej funkcji $g$ i estymowanego parametru, takiego że $\eta = g(\theta)$, jeśli $\hat{\theta}$ jest ENW parametru $\theta$ to $g(\hat{\theta})$ jest ENW parametru $\eta = g(\theta)$. W naszym przypadku $\theta = p$ oraz $f(p) = \mathcal{P}(X \geq 3)$ Oryginalnym ENW dla parametru $p$ z rozkładu $b(5, p)$ jest:
+
+$$\hat{p} = \frac{\sum_{i=1}^nx_i}{5n} = \frac{\bar{X}}{5}$$
+
+```{r, zad_1_tabelka, fig.height = 4, fig.width = 8, message = FALSE, cache = F, echo = FALSE}
+ps = seq(0.1, 0.9, by=0.2)
+ns = c(20, 50, 100)
+
+simulation_result <- lapply(ps, function(p){
+  lapply(ns, function(n){
+    lapply(1:1e4, function(i){
+      p_mle <- sum(rbinom(n, 5, p)/(5 * n))
+      prob_mle <- 1 - pbinom(2, 5, p_mle)
+      list(true_p = p, 
+           sample_size = n,
+           true_prob = 1 - pbinom(2, 5, p),
+           estimated_prob = prob_mle)
+    })
+  })
+})
+
+sim_dt = unlist(unlist(simulation_result, F, F), F, F)
+sim_dt = data.table::rbindlist(sim_dt)
+
+estymowane <- numeric(15)
+licznik <- 0
+for(i in 1:5){
+  proby <- numeric(3)
+  for(j in 1:3){
+    proby[j] <- sum(sim_dt[(licznik +1):(licznik + 10000),4]) / 10000
+    licznik <- licznik + 10000
+  }
+  estymowane[((3*(i-1)) + 1):((3*(i-1)) + 3)] <- proby
+}
+
+dane <- data.frame(Rozmiar_próby= c("20","50","100"), pstwo_0.1 = estymowane[1:3], pstwo_0.3 = estymowane[4:6], pstwo_0.5 = estymowane[7:9], pstwo_0.7 = estymowane[10:12], pstwo_0.9 = estymowane[13:15])
+
+knitr::kable(dane, caption = "Uśrednione wartości estymatora największej wiarogodności uzyskane na podstawie 10000 doświadczeń dla różnych wartości n oraz p")
+
+```
+
+Widzimy, że dla rozkładu dwumianowego o prawdopodobieństwie sukcesu równym 0,1 mamy średnią wartość ENW najbardziej zbliżoną do teoretycznej dla próby o najmniejszym rozmiarze - 20, a następnie dla prób o rozmiarach większych - 50 i 100. Dla prawdopodobieństw sukcesu równych 0,3 oraz 0,7 mamy różnice około 0,13, w możliwej skali od 0 do 1 jest to duża różnica. Dla prawdopodobieństwa 0,9 również mamy różnice, jedynie dla prawdopodobieństwa równego 0,5 obliczany estymator jest bardzo bliski tej wartości.
+
+```{r, zad_1_statystyki, fig.height = 4, fig.width = 8, echo = FALSE}
+ggplot(melt(sim_dt[, .(Obciążenie = mean(estimated_prob - true_prob),
+                       Wariancja = var(estimated_prob),
+                       Błąd_śr_kw = mean((estimated_prob - true_prob)^2)),
+                   by = c("true_p", "sample_size")],
+            id.vars = c("true_p", "sample_size")),
+       aes(x = reorder(as.character(true_p), true_p), y = value, 
+           color = reorder(as.character(sample_size), sample_size))) +
+  geom_point(size = 3.5) +
+  facet_wrap(~variable) +
+  scale_color_discrete(name = "rozmiar próby") +
+  theme(legend.position = "bottom") +
+  xlab("prawdziwe prawdopodobieństwo sukcesu") +
+  ylab("estymowane wartości poszczególnych statystyk")
+```
+
+Na podstawie powyższej wizualizacji możemy stwierdzić, że im większy był rozmiar próby tym mniejsze wartości osiągały obciążenie (z dokładnością do modułu), wariancja oraz błąd średniokwadratowy danego estymatora, niezależnie od wartości parametru $p$ określającego prawdopodobieństwo sukcesu dla rozkładu dwumianowego. Jest to wytłumaczone tym, że dla większej liczby prób, więcej wartości parametru koncentruje się około najbardziej prawdopodobnej wartości. Z kolei w przypadku parametru $p$, dla wariancji oraz błędu średniokwadratowego, rosły one im bardziej parametr teoretyczny, na podstawie, którego estymowano, był bardziej oddalony od wartości 0 oraz 1. Może to być wytłumaczalne tym, że, np. wokół wartości 0,5 od prawej i lewej strony mamy względnie dużo możliwych innych wartości, podczas, gdy dla wartości 0,1 jest ich dużo tylko z jednej strony.  
+
+# Wyznaczanie estymatora największej wiarogodności dla rozkładu Poissona
+
+Chcemy teraz wykonać podobne czynności, co w poprzednim rozdziale, ale dla rozkładu Poissona. Wygenerujemy $n$ obserwacji z tego rozkładu $\pi(\lambda)$ dla $n \in \{20, 50, 100\}$ oraz dla każdego $n$ dla $\lambda \in \{0.5, 1, 2, 5\}$. Będziemy chcieli na podstawie danych prób wyznaczyć wartość estymatora największej wiarogodności (ENW) wielkości $P(X = x)$, dla $x \in \{0, 1, \ldots, 10 \}$. Powtórzymy dane doświadczenie 10000 razy. Oszacujemy wariancję, błąd średniokwadratowy oraz wariancję analizowanego estymatora. Będziemy starali się sprawdzić jak wybór parametru $\lambda$, a także rozmiar próby wpływa na wyniki. Skorzystamy z tego samego twierdzenia dla ENW, jak w poprzedniej części. W naszym przypadku $\theta = \lambda$ oraz $f(\lambda) = \mathcal{P}(X = x)$ Oryginalnym ENW dla parametru $\lambda$ z rozkładu $\pi(\lambda)$ jest:
+
+$$\hat{\lambda} = \bar{X},$$
+czyli średnia arytmetyczna z danej próby. 
+
+```{r, zad_2_statystyki, fig.height = 4, fig.width = 8, echo = FALSE}
+ls = c(0.5, 1, 2, 5)
+ns = c(20, 50, 100)
+
+
+simulation_result <-lapply(ls, function(lambda){
+  lapply(ns, function(n){
+    lapply(1:1e4, function(i){
+      lambda_mle <- sum(rpois(n, lambda)/n)
+      list(true_lambda = lambda, 
+           sample_size = n,
+           x = 0:10, 
+           true_prob = dpois(0:10, lambda),
+           estimated_prob = dpois(0:10, lambda_mle))
+    })
+  })
+})
+
+
+sim_dt = unlist(unlist(simulation_result, F, F), F, F)
+sim_dt = data.table::rbindlist(sim_dt)
+
+
+ggplot(sim_dt[, .(Bias = mean(estimated_prob - true_prob),
+                  Var = var(estimated_prob),
+                  MSE = mean((estimated_prob - true_prob)^2)),
+              by = c("true_lambda", "sample_size", "x")],
+       aes(x = reorder(as.character(x), x), y = Bias, 
+           color = reorder(as.character(sample_size), sample_size))) +
+  geom_point(size = 3) +
+  facet_grid(~true_lambda) +
+  theme_light() +
+  scale_color_discrete(name = "rozmiar próby") +
+  theme(legend.position = "bottom") +
+  xlab("x") +
+  ylab("obciążenie")
+
+ggplot(sim_dt[, .(Bias = mean(estimated_prob - true_prob),
+                  Var = var(estimated_prob),
+                  MSE = mean((estimated_prob - true_prob)^2)),
+              by = c("true_lambda", "sample_size", "x")],
+       aes(x = reorder(as.character(x), x), y = Var, 
+           color = reorder(as.character(sample_size), sample_size))) +
+  geom_point(size = 3) +
+  facet_grid(~true_lambda) +
+  theme_light() +
+  scale_color_discrete(name = "rozmiar próby") +
+  theme(legend.position = "bottom") +
+  xlab("x") +
+  ylab("wariancja")
+
+ggplot(sim_dt[, .(Bias = mean(estimated_prob - true_prob),
+                  Var = var(estimated_prob),
+                  MSE = mean((estimated_prob - true_prob)^2)),
+              by = c("true_lambda", "sample_size", "x")],
+       aes(x = reorder(as.character(x), x), y = MSE, 
+           color = reorder(as.character(sample_size), sample_size))) +
+  geom_point(size = 3) +
+  facet_grid(~true_lambda) +
+  theme_light() +
+  scale_color_discrete(name = "rozmiar próby") +
+  theme(legend.position = "bottom") +
+  xlab("x") +
+  ylab("Błąd średniokwadratowy")
+```
+
+Na podstawie powyższych wykresów możemy stwierdzić, że im mniejsze $x$ oraz rozmiar próby tym wartości obciążenia, wariancji oraz błędu średniokwadratowego są większe (z dokładnością do modułu dla obciążenia). Wpływ na wartość danych statystyk ma także zmieniająca się wartość parametru $\lambda$. Kiedy się ona zwiększa, można zauważyć, że wtedy maleją. Może mieć to związek z tym, że mniejszych $\lambda$ funkcja gęstości rozkładu prawdopodobieństwa dla rozkładu Poissona (uciąglona) przypomina rozkład wykładniczy a dla większych wartości tego parametru rozkład normalny. Może to oznaczać, np. mniejszą wartość wariancji dla rozkładu normalnego a większą dla wykładniczego.
+
+# Informacja Fishera i rozkład normalny
+
+Teraz dla $n \in \{20, 50, 100 \}$ i dla każdego $n$ dla $\theta \in \{0.5, 1, 2, 5 \}$ oraz drugiego parametru kształtu równego 1 wygenerujemy $n$ obserwacji z rozkładu $b(\theta,1)$ Powtórzymy dane doświadczenie 10 000 razy. Na podstawie uzyskanych danych obliczymy estymator $\widehat{I(\theta)}$ informacji Fishera parametru $\theta$. Uzyskany rezultat zapamiętamy. 
+
+Następnie wygenerujemy niezależnie $n$ obserwacji z rozkładu $b(\theta,1)$. Wyznaczymy wartość
+estymatora największej wiarogodności parametru $\theta$. Zdefiniujemy nową zmienną $Y = \sqrt{n\widehat{I(\theta)}}(\hat{\theta} - \theta)$ Obliczymy jej wartość na podstawie zaobserwowanej próby oraz zapamiętanego wcześniej wyniku. Powtórzymy dane doświadczenie 10 000 razy. Narysujemy histogram oraz wykres kwantylowo-kwantylowy. Wybierzemy liczbę klas na histogramie zastanowimy się nad sposobem wyznaczania kwantyli teoretycznych na wykresie kwantylowo-kwantylowym. Odpowiemy z uzasadnieniem na pytanie, czy rozkład zmiennej $Y$ jest normalny.
+
+Poniższe wykresy oraz histogramy są odpowiednio dla $\theta = 0.5, 1, 2, 5$
+
+```{r, warning = FALSE, echo = FALSE}
+fisher_values = lapply(c(20, 50, 100), function(sample_size) sapply(1:1e4, function(i) {
+  sample = rbeta(sample_size, 0.5, 1)
+  mle = -sample_size/sum(log(sample))
+  fi = 1 / mle^2
+  fi
+}))
+fisher_2_1 = sapply(fisher_values, mean)
+get_fisher_estimated = function(sample_size) {
+  fisher_2_1[sample_size == c(20, 50, 100)]
+}
+new_rv = lapply(c(20, 50, 100), function(sample_size) lapply(1:1e4, function(i) {
+  sample = rbeta(sample_size, 0.5, 1)
+  mle = -sample_size/sum(log(sample))
+  
+  list(rv_values = sqrt(sample_size*get_fisher_estimated(sample_size)) * (mle - 0.5),
+       sample_size = sample_size,
+       iter = i)
+  
+}))
+library(data.table)
+library(ggplot2)
+rvs = rbindlist(unlist(new_rv, F, F))
+
+
+ggplot(rvs, aes(sample = rv_values, 
+                color = reorder(as.character(sample_size),
+                                sample_size))) +
+  geom_abline(slope = 1, intercept = 0, size = 1.2) +
+  geom_qq(distribution = qnorm) +
+  ggtitle("Wykres kwantylowo-kwantylowy dla zmiennej Y dla parametrów \n kształtu 0,5 oraz 1") +
+  scale_color_discrete(name = "rozmiar próby") +
+  theme_bw() +
+  theme(legend.position = "bottom") +
+  xlab("kwantyle teoretyczne") +
+  ylab("kwantyle doświadczalne")
+
+par(mfrow=c(1,3))
+v <- unlist(rvs[1:10000,1])
+hist(v, xlab = "Wartość obserwacji", ylab = "Liczba obserwacji o danej wartości", main = "Histogram rozkładu \n wartości zmiennej Y (n=20)", col = "blue", breaks = 20)
+v <- unlist(rvs[10001:20000,1])
+hist(v, xlab = "Wartość obserwacji", ylab = "Liczba obserwacji o danej wartości", main = "Histogram rozkładu \n wartości zmiennej Y (n=50)", col = "blue", breaks = 20)
+v <- unlist(rvs[20001:30000,1])
+hist(v, xlab = "Wartość obserwacji", ylab = "Liczba obserwacji o danej wartości", main = "Histogram rozkładu \n wartości zmiennej Y (n=100)", col = "blue", breaks = 20)
+par(mfrow=c(1,1))
+```
+
+```{r, warning = FALSE, echo = FALSE}
+fisher_values = lapply(c(20, 50, 100), function(sample_size) sapply(1:1e4, function(i) {
+  sample = rbeta(sample_size, 1, 1)
+  mle = -sample_size/sum(log(sample))
+  fi = 1 / mle^2
+  fi
+}))
+fisher_2_1 = sapply(fisher_values, mean)
+get_fisher_estimated = function(sample_size) {
+  fisher_2_1[sample_size == c(20, 50, 100)]
+}
+new_rv = lapply(c(20, 50, 100), function(sample_size) lapply(1:1e4, function(i) {
+  sample = rbeta(sample_size, 1, 1)
+  mle = -sample_size/sum(log(sample))
+  
+  list(rv_values = sqrt(sample_size*get_fisher_estimated(sample_size)) * (mle - 1),
+       sample_size = sample_size,
+       iter = i)
+  
+}))
+library(data.table)
+library(ggplot2)
+rvs = rbindlist(unlist(new_rv, F, F))
+
+
+ggplot(rvs, aes(sample = rv_values, 
+                color = reorder(as.character(sample_size),
+                                sample_size))) +
+  geom_abline(slope = 1, intercept = 0, size = 1.2) +
+  geom_qq(distribution = qnorm) +
+  ggtitle("Wykres kwantylowo-kwantylowy dla zmiennej Y dla parametrów \n kształtu 1 oraz 1") +
+  scale_color_discrete(name = "rozmiar próby") +
+  theme_bw() +
+  theme(legend.position = "bottom") +
+  xlab("kwantyle teoretyczne") +
+  ylab("kwantyle doświadczalne")
+
+par(mfrow=c(1,3))
+v <- unlist(rvs[1:10000,1])
+hist(v, xlab = "Wartość obserwacji", ylab = "Liczba obserwacji o danej wartości", main = "Histogram rozkładu \n wartości zmiennej Y (n=20)", col = "blue", breaks = 20)
+v <- unlist(rvs[10001:20000,1])
+hist(v, xlab = "Wartość obserwacji", ylab = "Liczba obserwacji o danej wartości", main = "Histogram rozkładu \n wartości zmiennej Y (n=50)", col = "blue", breaks = 20)
+v <- unlist(rvs[20001:30000,1])
+hist(v, xlab = "Wartość obserwacji", ylab = "Liczba obserwacji o danej wartości", main = "Histogram rozkładu \n wartości zmiennej Y (n=100)", col = "blue", breaks = 20)
+par(mfrow=c(1,1))
+```
+
+```{r, warning = FALSE, echo = FALSE}
+fisher_values = lapply(c(20, 50, 100), function(sample_size) sapply(1:1e4, function(i) {
+  sample = rbeta(sample_size, 2, 1)
+  mle = -sample_size/sum(log(sample))
+  fi = 1 / mle^2
+  fi
+}))
+fisher_2_1 = sapply(fisher_values, mean)
+get_fisher_estimated = function(sample_size) {
+  fisher_2_1[sample_size == c(20, 50, 100)]
+}
+new_rv = lapply(c(20, 50, 100), function(sample_size) lapply(1:1e4, function(i) {
+  sample = rbeta(sample_size, 2, 1)
+  mle = -sample_size/sum(log(sample))
+  
+  list(rv_values = sqrt(sample_size*get_fisher_estimated(sample_size)) * (mle - 2),
+       sample_size = sample_size,
+       iter = i)
+  
+}))
+library(data.table)
+library(ggplot2)
+rvs = rbindlist(unlist(new_rv, F, F))
+
+
+ggplot(rvs, aes(sample = rv_values, 
+                color = reorder(as.character(sample_size),
+                                sample_size))) +
+  geom_abline(slope = 1, intercept = 0, size = 1.2) +
+  geom_qq(distribution = qnorm) +
+  ggtitle("Wykres kwantylowo-kwantylowy dla zmiennej Y dla parametrów \n kształtu 0,5 oraz 1") +
+  scale_color_discrete(name = "rozmiar próby") +
+  theme_bw() +
+  theme(legend.position = "bottom") +
+  xlab("kwantyle teoretyczne") +
+  ylab("kwantyle doświadczalne")
+
+par(mfrow=c(1,3))
+v <- unlist(rvs[1:10000,1])
+hist(v, xlab = "Wartość obserwacji", ylab = "Liczba obserwacji o danej wartości", main = "Histogram rozkładu \n wartości zmiennej Y (n=20)", col = "blue", breaks = 20)
+v <- unlist(rvs[10001:20000,1])
+hist(v, xlab = "Wartość obserwacji", ylab = "Liczba obserwacji o danej wartości", main = "Histogram rozkładu \n wartości zmiennej Y (n=50)", col = "blue", breaks = 20)
+v <- unlist(rvs[20001:30000,1])
+hist(v, xlab = "Wartość obserwacji", ylab = "Liczba obserwacji o danej wartości", main = "Histogram rozkładu \n wartości zmiennej Y (n=100)", col = "blue", breaks = 20)
+par(mfrow=c(1,1))
+```
+
+
+```{r, warning = FALSE, echo = FALSE}
+fisher_values = lapply(c(20, 50, 100), function(sample_size) sapply(1:1e4, function(i) {
+  sample = rbeta(sample_size, 5, 1)
+  mle = -sample_size/sum(log(sample))
+  fi = 1 / mle^2
+  fi
+}))
+fisher_2_1 = sapply(fisher_values, mean)
+get_fisher_estimated = function(sample_size) {
+  fisher_2_1[sample_size == c(20, 50, 100)]
+}
+new_rv = lapply(c(20, 50, 100), function(sample_size) lapply(1:1e4, function(i) {
+  sample = rbeta(sample_size, 5, 1)
+  mle = -sample_size/sum(log(sample))
+  
+  list(rv_values = sqrt(sample_size*get_fisher_estimated(sample_size)) * (mle - 5),
+       sample_size = sample_size,
+       iter = i)
+  
+}))
+library(data.table)
+library(ggplot2)
+rvs = rbindlist(unlist(new_rv, F, F))
+
+
+ggplot(rvs, aes(sample = rv_values, 
+                color = reorder(as.character(sample_size),
+                                sample_size))) +
+  geom_abline(slope = 1, intercept = 0, size = 1.2) +
+  geom_qq(distribution = qnorm) +
+  ggtitle("Wykres kwantylowo-kwantylowy dla zmiennej Y dla parametrów \n kształtu 1 oraz 1") +
+  scale_color_discrete(name = "rozmiar próby") +
+  theme_bw() +
+  theme(legend.position = "bottom") +
+  xlab("kwantyle teoretyczne") +
+  ylab("kwantyle doświadczalne")
+
+par(mfrow=c(1,3))
+v <- unlist(rvs[1:10000,1])
+hist(v, xlab = "Wartość obserwacji", ylab = "Liczba obserwacji o danej wartości", main = "Histogram rozkładu \n wartości zmiennej Y (n=20)", col = "blue", breaks = 20)
+v <- unlist(rvs[10001:20000,1])
+hist(v, xlab = "Wartość obserwacji", ylab = "Liczba obserwacji o danej wartości", main = "Histogram rozkładu \n wartości zmiennej Y (n=50)", col = "blue", breaks = 20)
+v <- unlist(rvs[20001:30000,1])
+hist(v, xlab = "Wartość obserwacji", ylab = "Liczba obserwacji o danej wartości", main = "Histogram rozkładu \n wartości zmiennej Y (n=100)", col = "blue", breaks = 20)
+par(mfrow=c(1,1))
+```
+
+Na podstawie powyższych wykresów oraz histogramów możemy wywnioskować, że rozkład zmiennej losowej $Y$ jest zbliżony do normalnego. Kwantyle doświadczalne w dużym stopniu przylegają do osi wyznaczanej przez kwantyle teoretyczne. Te drugie pochodzą ze standardowego rozkładu normalnego. Dlaczego? Wiemy, że informacja Fishera w naszym przypadku jest skończona. Ciąg estymatorów największej wiarogodności spełnia odpowiednie równanie:
+$$\frac{dL(\theta)}{d\theta} = 0$$
+Zatem zachodzi:
+$$\sqrt{n}(\hat{\theta}- \theta) \stackrel{\mathcal{D}}{\longrightarrow} N(0,\frac{1}{I(\theta)})$$
+W naszym przypadku mamy $N(0,1)$. Histogramy przedstawiające rozkład zmiennej losowej $Y$ przypominają rozkład zmiennej losowej o rozkładzie normalnym. Liczba klas równa jest w tym przypadku 20, dlatego, że pozwala szczegółowiej ukazać rozkład zmiennej losowej $Y$.
+
+# Efektywność różnych estymatorów wartości oczekiwanej dla rozkładu Laplace'a
+
+W ostatniej części wygenerujemy kolejno $n$ obserwacji ($n \in \{20, 50, 100 \}$) z rozkładu $L(\theta,\sigma)$ (Laplace'a), dla:
+
+(a) $\theta = 1, \sigma = 1$
+(b) $\theta = 4, \sigma = 1$
+(c) $\theta = 1, \sigma = 2$
+
+Na podstawie tych danych obliczać będziemy wartość estymatora parametru $\theta$ postaci:
+
+(i) $\hat{\theta_1} = \bar{X} = (1/n)\sum_{i=1}^n X_i$,
+(ii) $\hat{\theta_2} = Me\{X_1, \ldots, X_n\}$,
+(iii) $\hat{\theta_3} = \sum_{i=1}^{n} w_iX_i, \ \sum_{i=1}^{n} w_i = 1, \ 0 \leq w_i \leq 1, \ i = 1, \ldots, n$ (wagi własne na wykresie pudełkowym, w przypadku naszej analizy wynoszą one n/2 razy 1/2n dla pierwszej połowy wartości wektora wag oraz n/2 razy 3/2n dla kolejnych wartości wektora wag),
+(iv) $\hat{\theta_4} = \sum_{i=1}^{n} w_iX_{i:n},$ gdzie $X_{i:n}, \ldots, X_{n:n}$ są uporządkowanymi obserwacjami $X_1, \ldots, X_n$,
+
+$$w_i = \phi(\Phi^{-1}(\frac{i-1}{n})) - \phi(\Phi^{-1}(\frac{i}{n})), $$
+gdzie $\phi$ jest gęstością a $\Phi$ dystrybuantą standardowego rozkładu normalnego N(0,1) (gęst. i dystr. na wykresie pudełkowym).
+
+Powtórzymy dane doświadczenie 10 000 razy. Na jego podstawie oszacujemy wariancje, błąd średniokwadratowy
+oraz obciążenie każdego z estymatorów, a także zwizualizujemy wyniki naszego badania i zastanowimy się nad ich rezultatem. Przedyskutujemy, który estymator jest optymalny i odniesiemy się do zadania 1 z listy 1.
+
+```{r, Obciaz_i_blad_sred_kw, echo = FALSE}
+bl_sred <- function(vect, teta){
+  vect <- unlist(vect)
+  suma <- 0
+  for(i in 1:length(vect)){
+    suma <- suma + (vect[i] - teta)^2
+  }
+  suma <- suma / length(vect)
+  return(suma)
+}
+
+obciaz <- function(vect, teta){
+  vect <- unlist(vect)
+  suma <- mean(vect)
+  suma <- suma - teta
+  return(suma)
+}
+```
+
+# n = 20
+
+```{r, echo = FALSE}
+w1 <- rep(1/40,10)
+w2 <- rep(3/40,10)
+w <- c(w1,w2)
+v <- numeric(20)
+for(j in 1:20){
+  v[j] <- dnorm(qnorm((j-1)/20))-dnorm(qnorm(j/20))
+}
+
+f<-function(n, teta, sigma){
+  t1 <- numeric(10000)
+  t2 <- numeric(10000)
+  t3 <- numeric(10000)
+  t4 <- numeric(10000)
+  for(i in 1:10000){
+    a <- rlaplace(n,teta,sigma)
+    #i)
+    teta1 <- mean(a)
+    t1[i] <- teta1
+    #ii) 
+    teta2 <- median(a)
+    t2[i] <- teta2
+    #iii)
+    teta3 <- 0
+    for(j in 1:n){
+      teta3 <- teta3 + w[j] * a[j]
+    }
+    t3[i] <- teta3
+    #iv)
+    teta4 <- 0
+    b <- sort(a)
+    for(j in 1:n){
+      teta4 <- teta4 + v[j] * b[j]
+    }
+    t4[i] <- teta4
+  }
+  t <- list(t1,t2,t3,t4)
+  return(t)
+}
+
+v1 <- f(20,1,1)
+v2 <- f(20,4,1)
+v3 <- f(20,1,2)
+```
+
+
+```{r, fig.height=4, echo = FALSE}
+#a
+library(ggplot2)
+dane <- data.frame(
+  estymator = rep(c("Średnia arytmetyczna", "Mediana", "Śred. waż. - wagi własne","Śred. waż. - gęst. i dystr."), each = 10000),
+  Wartosc_estymatora <- unlist(c(v1[1],v1[2],v1[3],v1[4]))
+)
+
+ggplot(dane, aes(x = estymator, y = Wartosc_estymatora)) +
+  geom_boxplot(outlier.shape = NA) +
+  theme(plot.title = element_text(hjust = 0.5)) +
+  labs(title = "Zakres zmienności różnych estymatorów wartości oczekiwanej \n rozkładu Laplace'a o wart. śred. 1 i parametrze skali 1", y = "Wartości", x = "Estymator") 
+```
+
+```{r, echo = FALSE}
+wariancje <- numeric(4)
+blendy_srednio_kw <- numeric(4)
+obciazenia <- numeric(4)
+for(i in 1:4){
+  wariancje[i] <- var(unlist(v1[i]))
+  blendy_srednio_kw[i] <- bl_sred(v1[i], 1)
+  obciazenia[i] <- obciaz(v1[i], 1)
+}
+dane <- data.frame(Estymator = c("Średnia arytmetyczna","Mediana","Wagi własne","Gęts. i dystr."), Wariancja = wariancje, Błąd_Średniokwadratowy = blendy_srednio_kw, Obciążenie = obciazenia)
+```
+
+```{r, echo = FALSE, message = FALSE, cache = F}
+knitr::kable(dane, caption = "Szacowana wariancja, błąd średniokwadratowy, oraz obciążanie każdego z estymatorów wartości średniej rozkładu Laplace'a o wart. śred. 1 i parametrze skali 1")
+
+```
+
+
+
+
+
+
+```{r, fig.height=4, echo = FALSE}
+#b
+library(ggplot2)
+dane <- data.frame(
+  estymator = rep(c("Średnia arytmetyczna", "Mediana", "Śred. waż. - 
+                    wagi własne","Śred. waż. - gęst. i dystr."), each = 10000),
+  Wartosc_estymatora <- unlist(c(v2[1],v2[2],v2[3],v2[4]))
+)
+
+ggplot(dane, aes(x = estymator, y = Wartosc_estymatora)) +
+  geom_boxplot(outlier.shape = NA) +
+  theme(plot.title = element_text(hjust = 0.5)) +
+  labs(title = "Zakres zmienności różnych estymatorów wartości oczekiwanej \n rozkładu Laplace'a o wart. śred. 4 i parametrze skali 1", y = "Wartości", x = "Estymator") 
+
+```
+
+```{r, echo = FALSE}
+wariancje <- numeric(4)
+blendy_srednio_kw <- numeric(4)
+obciazenia <- numeric(4)
+for(i in 1:4){
+  wariancje[i] <- var(unlist(v2[i]))
+  blendy_srednio_kw[i] <- bl_sred(v2[i], 4)
+  obciazenia[i] <- obciaz(v2[i], 4)
+}
+dane <- data.frame(Estymator = c("Średnia arytmetyczna","Mediana","Wagi własne","Gęts. i dystr."), Wariancja = wariancje, Błąd_Średniokwadratowy = blendy_srednio_kw, Obciążenie = obciazenia)
+```
+
+```{r, echo = FALSE, message = FALSE, cache = F}
+knitr::kable(dane, caption = "Szacowana wariancja, błąd średniokwadratowy, oraz obciążanie każdego z estymatorów wartości średniej rozkładu Laplace'a o wart. śred. 4 i parametrze skali 1")
+
+```
+
+
+
+
+
+
+```{r, fig.height=4, echo = FALSE}
+#c
+library(ggplot2)
+dane <- data.frame(
+  estymator = rep(c("Średnia arytmetyczna", "Mediana", "Śred. waż. - wagi własne","Śred. waż. - gęst. i dystr."), each = 10000),
+  Wartosc_estymatora <- unlist(c(v3[1],v3[2],v3[3],v3[4]))
+)
+
+ggplot(dane, aes(x = estymator, y = Wartosc_estymatora)) +
+  geom_boxplot(outlier.shape = NA) +
+  theme(plot.title = element_text(hjust = 0.5)) +
+  labs(title = "Zakres zmienności różnych estymatorów wartości oczekiwanej \n rozkładu Laplace'a o wart. śred. 1 i parametrze skali 2", y = "Wartości", x = "Estymator") 
+```
+
+```{r, echo = FALSE}
+wariancje <- numeric(4)
+blendy_srednio_kw <- numeric(4)
+obciazenia <- numeric(4)
+for(i in 1:4){
+  wariancje[i] <- var(unlist(v3[i]))
+  blendy_srednio_kw[i] <- bl_sred(v3[i], 1)
+  obciazenia[i] <- obciaz(v3[i], 1)
+}
+dane <- data.frame(Estymator = c("Średnia arytmetyczna","Mediana","Wagi własne","Gęts. i dystr."), Wariancja = wariancje, Błąd_Średniokwadratowy = blendy_srednio_kw, Obciążenie = obciazenia)
+```
+
+```{r, echo = FALSE, message = FALSE, cache = F}
+knitr::kable(dane, caption = "Szacowana wariancja, błąd średniokwadratowy, oraz obciążanie każdego z estymatorów wartości średniej rozkładu Laplace'a o wart. śred. 1 i parametrze skali 2")
+
+```
+
+# n = 50
+
+```{r, echo = FALSE}
+w1 <- rep(1/100,25)
+w2 <- rep(3/100,25)
+w <- c(w1,w2)
+v <- numeric(50)
+for(j in 1:50){
+  v[j] <- dnorm(qnorm((j-1)/50))-dnorm(qnorm(j/50))
+}
+
+f<-function(n, teta, sigma){
+  t1 <- numeric(10000)
+  t2 <- numeric(10000)
+  t3 <- numeric(10000)
+  t4 <- numeric(10000)
+  for(i in 1:10000){
+    a <- rlaplace(n,teta,sigma)
+    #i)
+    teta1 <- mean(a)
+    t1[i] <- teta1
+    #ii) 
+    teta2 <- median(a)
+    t2[i] <- teta2
+    #iii)
+    teta3 <- 0
+    for(j in 1:n){
+      teta3 <- teta3 + w[j] * a[j]
+    }
+    t3[i] <- teta3
+    #iv)
+    teta4 <- 0
+    b <- sort(a)
+    for(j in 1:n){
+      teta4 <- teta4 + v[j] * b[j]
+    }
+    t4[i] <- teta4
+  }
+  t <- list(t1,t2,t3,t4)
+  return(t)
+}
+
+v1 <- f(50,1,1)
+v2 <- f(50,4,1)
+v3 <- f(50,1,2)
+```
+
+
+```{r, fig.height=4, echo = FALSE}
+#a
+library(ggplot2)
+dane <- data.frame(
+  estymator = rep(c("Średnia arytmetyczna", "Mediana", "Śred. waż. - wagi własne","Śred. waż. - gęst. i dystr."), each = 10000),
+  Wartosc_estymatora <- unlist(c(v1[1],v1[2],v1[3],v1[4]))
+)
+
+ggplot(dane, aes(x = estymator, y = Wartosc_estymatora)) +
+  geom_boxplot(outlier.shape = NA) +
+  theme(plot.title = element_text(hjust = 0.5)) +
+  labs(title = "Zakres zmienności różnych estymatorów wartości oczekiwanej \n rozkładu Laplace'a o wart. śred. 1 i parametrze skali 1", y = "Wartości", x = "Estymator") 
+```
+
+```{r, echo = FALSE}
+wariancje <- numeric(4)
+blendy_srednio_kw <- numeric(4)
+obciazenia <- numeric(4)
+for(i in 1:4){
+  wariancje[i] <- var(unlist(v1[i]))
+  blendy_srednio_kw[i] <- bl_sred(v1[i], 1)
+  obciazenia[i] <- obciaz(v1[i], 1)
+}
+dane <- data.frame(Estymator = c("Średnia arytmetyczna","Mediana","Wagi własne","Gęts. i dystr."), Wariancja = wariancje, Błąd_Średniokwadratowy = blendy_srednio_kw, Obciążenie = obciazenia)
+```
+
+```{r, echo = FALSE, message = FALSE, cache = F}
+knitr::kable(dane, caption = "Szacowana wariancja, błąd średniokwadratowy, oraz obciążanie każdego z estymatorów wartości średniej rozkładu Laplace'a o wart. śred. 1 i parametrze skali 1")
+
+```
+
+
+
+
+
+
+```{r, fig.height=4, echo = FALSE}
+#b
+library(ggplot2)
+dane <- data.frame(
+  estymator = rep(c("Średnia arytmetyczna", "Mediana", "Śred. waż. - 
+                    wagi własne","Śred. waż. - gęst. i dystr."), each = 10000),
+  Wartosc_estymatora <- unlist(c(v2[1],v2[2],v2[3],v2[4]))
+)
+
+ggplot(dane, aes(x = estymator, y = Wartosc_estymatora)) +
+  geom_boxplot(outlier.shape = NA) +
+  theme(plot.title = element_text(hjust = 0.5)) +
+  labs(title = "Zakres zmienności różnych estymatorów wartości oczekiwanej \n rozkładu Laplace'a o wart. śred. 4 i parametrze skali 1", y = "Wartości", x = "Estymator") 
+
+```
+
+```{r, echo = FALSE}
+wariancje <- numeric(4)
+blendy_srednio_kw <- numeric(4)
+obciazenia <- numeric(4)
+for(i in 1:4){
+  wariancje[i] <- var(unlist(v2[i]))
+  blendy_srednio_kw[i] <- bl_sred(v2[i], 4)
+  obciazenia[i] <- obciaz(v2[i], 4)
+}
+dane <- data.frame(Estymator = c("Średnia arytmetyczna","Mediana","Wagi własne","Gęts. i dystr."), Wariancja = wariancje, Błąd_Średniokwadratowy = blendy_srednio_kw, Obciążenie = obciazenia)
+```
+
+```{r, echo = FALSE, message = FALSE, cache = F}
+knitr::kable(dane, caption = "Szacowana wariancja, błąd średniokwadratowy, oraz obciążanie każdego z estymatorów wartości średniej rozkładu Laplace'a o wart. śred. 4 i parametrze skali 1")
+
+```
+
+
+
+
+
+
+```{r, fig.height=4, echo = FALSE}
+#c
+library(ggplot2)
+dane <- data.frame(
+  estymator = rep(c("Średnia arytmetyczna", "Mediana", "Śred. waż. - wagi własne","Śred. waż. - gęst. i dystr."), each = 10000),
+  Wartosc_estymatora <- unlist(c(v3[1],v3[2],v3[3],v3[4]))
+)
+
+ggplot(dane, aes(x = estymator, y = Wartosc_estymatora)) +
+  geom_boxplot(outlier.shape = NA) +
+  theme(plot.title = element_text(hjust = 0.5)) +
+  labs(title = "Zakres zmienności różnych estymatorów wartości oczekiwanej \n rozkładu Laplace'a o wart. śred. 1 i parametrze skali 2", y = "Wartości", x = "Estymator") 
+```
+
+```{r, echo = FALSE}
+wariancje <- numeric(4)
+blendy_srednio_kw <- numeric(4)
+obciazenia <- numeric(4)
+for(i in 1:4){
+  wariancje[i] <- var(unlist(v3[i]))
+  blendy_srednio_kw[i] <- bl_sred(v3[i], 1)
+  obciazenia[i] <- obciaz(v3[i], 1)
+}
+dane <- data.frame(Estymator = c("Średnia arytmetyczna","Mediana","Wagi własne","Gęts. i dystr."), Wariancja = wariancje, Błąd_Średniokwadratowy = blendy_srednio_kw, Obciążenie = obciazenia)
+```
+
+```{r, echo = FALSE, message = FALSE, cache = F}
+knitr::kable(dane, caption = "Szacowana wariancja, błąd średniokwadratowy, oraz obciążanie każdego z estymatorów wartości średniej rozkładu Laplace'a o wart. śred. 1 i parametrze skali 2")
+
+```
+
+
+
+# n = 100
+
+```{r, echo = FALSE}
+w1 <- rep(1/200,50)
+w2 <- rep(3/200,50)
+w <- c(w1,w2)
+v <- numeric(100)
+for(j in 1:100){
+  v[j] <- dnorm(qnorm((j-1)/100))-dnorm(qnorm(j/100))
+}
+
+f<-function(n, teta, sigma){
+  t1 <- numeric(10000)
+  t2 <- numeric(10000)
+  t3 <- numeric(10000)
+  t4 <- numeric(10000)
+  for(i in 1:10000){
+    a <- rlaplace(n,teta,sigma)
+    #i)
+    teta1 <- mean(a)
+    t1[i] <- teta1
+    #ii) 
+    teta2 <- median(a)
+    t2[i] <- teta2
+    #iii)
+    teta3 <- 0
+    for(j in 1:n){
+      teta3 <- teta3 + w[j] * a[j]
+    }
+    t3[i] <- teta3
+    #iv)
+    teta4 <- 0
+    b <- sort(a)
+    for(j in 1:n){
+      teta4 <- teta4 + v[j] * b[j]
+    }
+    t4[i] <- teta4
+  }
+  t <- list(t1,t2,t3,t4)
+  return(t)
+}
+
+v1 <- f(100,1,1)
+v2 <- f(100,4,1)
+v3 <- f(100,1,2)
+```
+
+
+```{r, fig.height=4, echo = FALSE}
+#a
+library(ggplot2)
+dane <- data.frame(
+  estymator = rep(c("Średnia arytmetyczna", "Mediana", "Śred. waż. - wagi własne","Śred. waż. - gęst. i dystr."), each = 10000),
+  Wartosc_estymatora <- unlist(c(v1[1],v1[2],v1[3],v1[4]))
+)
+
+ggplot(dane, aes(x = estymator, y = Wartosc_estymatora)) +
+  geom_boxplot(outlier.shape = NA) +
+  theme(plot.title = element_text(hjust = 0.5)) +
+  labs(title = "Zakres zmienności różnych estymatorów wartości oczekiwanej \n rozkładu Laplace'a o wart. śred. 1 i parametrze skali 1", y = "Wartości", x = "Estymator") 
+```
+
+```{r, echo = FALSE}
+wariancje <- numeric(4)
+blendy_srednio_kw <- numeric(4)
+obciazenia <- numeric(4)
+for(i in 1:4){
+  wariancje[i] <- var(unlist(v1[i]))
+  blendy_srednio_kw[i] <- bl_sred(v1[i], 1)
+  obciazenia[i] <- obciaz(v1[i], 1)
+}
+dane <- data.frame(Estymator = c("Średnia arytmetyczna","Mediana","Wagi własne","Gęts. i dystr."), Wariancja = wariancje, Błąd_Średniokwadratowy = blendy_srednio_kw, Obciążenie = obciazenia)
+```
+
+```{r, echo = FALSE, message = FALSE, cache = F}
+knitr::kable(dane, caption = "Szacowana wariancja, błąd średniokwadratowy, oraz obciążanie każdego z estymatorów wartości średniej rozkładu Laplace'a o wart. śred. 1 i parametrze skali 1")
+
+```
+
+
+
+
+
+
+```{r, fig.height=4, echo = FALSE}
+#b
+library(ggplot2)
+dane <- data.frame(
+  estymator = rep(c("Średnia arytmetyczna", "Mediana", "Śred. waż. - 
+                    wagi własne","Śred. waż. - gęst. i dystr."), each = 10000),
+  Wartosc_estymatora <- unlist(c(v2[1],v2[2],v2[3],v2[4]))
+)
+
+ggplot(dane, aes(x = estymator, y = Wartosc_estymatora)) +
+  geom_boxplot(outlier.shape = NA) +
+  theme(plot.title = element_text(hjust = 0.5)) +
+  labs(title = "Zakres zmienności różnych estymatorów wartości oczekiwanej \n rozkładu Laplace'a o wart. śred. 4 i parametrze skali 1", y = "Wartości", x = "Estymator") 
+
+```
+
+```{r, echo = FALSE}
+wariancje <- numeric(4)
+blendy_srednio_kw <- numeric(4)
+obciazenia <- numeric(4)
+for(i in 1:4){
+  wariancje[i] <- var(unlist(v2[i]))
+  blendy_srednio_kw[i] <- bl_sred(v2[i], 4)
+  obciazenia[i] <- obciaz(v2[i], 4)
+}
+dane <- data.frame(Estymator = c("Średnia arytmetyczna","Mediana","Wagi własne","Gęts. i dystr."), Wariancja = wariancje, Błąd_Średniokwadratowy = blendy_srednio_kw, Obciążenie = obciazenia)
+```
+
+```{r, echo = FALSE, message = FALSE, cache = F}
+knitr::kable(dane, caption = "Szacowana wariancja, błąd średniokwadratowy, oraz obciążanie każdego z estymatorów wartości średniej rozkładu Laplace'a o wart. śred. 4 i parametrze skali 1")
+
+```
+
+
+
+
+
+
+```{r, fig.height=4, echo = FALSE}
+#c
+library(ggplot2)
+dane <- data.frame(
+  estymator = rep(c("Średnia arytmetyczna", "Mediana", "Śred. waż. - wagi własne","Śred. waż. - gęst. i dystr."), each = 10000),
+  Wartosc_estymatora <- unlist(c(v3[1],v3[2],v3[3],v3[4]))
+)
+
+ggplot(dane, aes(x = estymator, y = Wartosc_estymatora)) +
+  geom_boxplot(outlier.shape = NA) +
+  theme(plot.title = element_text(hjust = 0.5)) +
+  labs(title = "Zakres zmienności różnych estymatorów wartości oczekiwanej \n rozkładu Laplace'a o wart. śred. 1 i parametrze skali 2", y = "Wartości", x = "Estymator") 
+```
+
+```{r, echo = FALSE}
+wariancje <- numeric(4)
+blendy_srednio_kw <- numeric(4)
+obciazenia <- numeric(4)
+for(i in 1:4){
+  wariancje[i] <- var(unlist(v3[i]))
+  blendy_srednio_kw[i] <- bl_sred(v3[i], 1)
+  obciazenia[i] <- obciaz(v3[i], 1)
+}
+dane <- data.frame(Estymator = c("Średnia arytmetyczna","Mediana","Wagi własne","Gęts. i dystr."), Wariancja = wariancje, Błąd_Średniokwadratowy = blendy_srednio_kw, Obciążenie = obciazenia)
+```
+
+```{r, echo = FALSE, message = FALSE, cache = F}
+knitr::kable(dane, caption = "Szacowana wariancja, błąd średniokwadratowy, oraz obciążanie każdego z estymatorów wartości średniej rozkładu Laplace'a o wart. śred. 1 i parametrze skali 2")
+
+```
+
+Analizując powyższe wyniki możemy stwierdzić, że najlepszym estymatorem w naszym przypadku jest mediana. Osiąga ona generalnie najmniejsze wartości poszczególnych statystyk próby. Ma też nieduży rozrzut względem innych estymatorów. Warto zauważyć, że ENW dla rozkładu Laplace'a jest mediana a dla rozkładu normalnego średnia. W przypadku zad 1 z listy 1 to ona była optymalnym estymatorem.

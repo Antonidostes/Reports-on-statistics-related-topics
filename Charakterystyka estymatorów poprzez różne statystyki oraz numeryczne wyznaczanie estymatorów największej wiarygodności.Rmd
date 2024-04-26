@@ -1,0 +1,931 @@
+---
+title: "Charakterystyka estymatorów poprzez różne statystyki oraz numeryczne wyznaczanie estymatorów największej wiarygodności"
+author: "Antoni Bieniasz"
+date: "2023-10-25"
+output:
+  pdf_document:
+    dev: cairo_pdf
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE)
+```
+
+# Wstęp 
+Raport ten skupia się na analizie estymatorów. Na początku zbadane zostaną różne estymatory wartości oczekiwanej rozkładu normalnego, przede wszystkim pod względem ich wariancji, błędu średniokwadratowego oraz obciążenia. Następnie poprzez numeryczną metodę Newtona szacować będziemy wartość estymatora największej wiarygodności (będziemy pisać dalej w skrócie ENW) dla rozkładów, dla których jego dokładne wyliczenie jest trudne.
+
+# zad 1
+
+W pierwszej kolejności wygenerujemy kolejno 50 obserwacji z rozkładu $N(\theta,\sigma^2)$, dla:
+
+(a) $\theta = 1, \sigma = 1$
+(b) $\theta = 4, \sigma = 1$
+(c) $\theta = 1, \sigma = 2$
+
+Na podstawie tych danych obliczać będziemy wartość estymatora parametru $\theta$ postaci:
+
+(i) $\hat{\theta_1} = \bar{X} = (1/n)\sum_{i=1}^n X_i$,
+(ii) $\hat{\theta_2} = Me\{X_1, \ldots, X_n\}$,
+(iii) $\hat{\theta_3} = \sum_{i=1}^{n} w_iX_i, \ \sum_{i=1}^{n} w_i = 1, \ 0 \leq w_i \leq 1, \ i = 1, \ldots, n$ (wagi własne na wykresie pudełkowym, w przypadku naszej analizy wynoszą one 1/100 dla pierwszych 25 wartości wektora wag oraz 3/100 dla kolejnych 25 wartości wektora wag),
+(iv) $\hat{\theta_4} = \sum_{i=1}^{n} w_iX_{i:n},$ gdzie $X_{i:n}, \ldots, X_{n:n}$ są uporządkowanymi obserwacjami $X_1, \ldots, X_n$,
+
+$$w_i = \phi(\Phi^{-1}(\frac{i-1}{n})) - \phi(\Phi^{-1}(\frac{i}{n})), $$
+gdzie $\phi$ jest gęstoscią a $\Phi$ dystrybuantą standardowego rozkładu normalnego N(0,1) (gęst. i dystr. na wykresie pudełkowym).
+
+Powtórzymy dane doświadczenie 10 000 razy. Na jego podstawie oszacujemy wariancje, błąd średniokwadratowy
+oraz obciążenie każdego z estymatorów, a także zwizualizujemy wyniki naszego badania i zastanowimy się nad ich rezultatem.
+
+```{r, echo = FALSE}
+w1 <- rep(1/100,25)
+w2 <- rep(3/100,25)
+w <- c(w1,w2)
+v <- numeric(50)
+for(j in 1:50){
+  v[j] <- dnorm(qnorm((j-1)/50))-dnorm(qnorm(j/50))
+}
+
+f<-function(n, teta, sigma){
+  t1 <- numeric(10000)
+  t2 <- numeric(10000)
+  t3 <- numeric(10000)
+  t4 <- numeric(10000)
+  for(i in 1:10000){
+    a <- rnorm(n,teta,sigma)
+    #i)
+    teta1 <- mean(a)
+    t1[i] <- teta1
+    #ii) 
+    teta2 <- median(a)
+    t2[i] <- teta2
+    #iii)
+    teta3 <- 0
+    for(j in 1:n){
+      teta3 <- teta3 + w[j] * a[j]
+    }
+    t3[i] <- teta3
+    #iv)
+    teta4 <- 0
+    b <- sort(a)
+    for(j in 1:n){
+      teta4 <- teta4 + v[j] * b[j]
+    }
+    t4[i] <- teta4
+  }
+  t <- list(t1,t2,t3,t4)
+  return(t)
+}
+
+v1 <- f(50,1,1)
+v2 <- f(50,4,1)
+v3 <- f(50,1,4)
+```
+
+```{r, echo = FALSE}
+bl_sred <- function(vect, teta){
+  vect <- unlist(vect)
+  suma <- 0
+  for(i in 1:length(vect)){
+    suma <- suma + (vect[i] - teta)^2
+  }
+  suma <- suma / length(vect)
+  return(suma)
+}
+
+obciaz <- function(vect, teta){
+  vect <- unlist(vect)
+  suma <- mean(vect)
+  suma <- suma - teta
+  return(suma)
+}
+```
+
+W analizie poniższych wykresów oraz tabel będziemy skrótowo oznaczać estymatory takimi liczbami jakimi były one oznaczone we wstępie do zadania 1, tzn.: średnia arytmetyczna - 1, mediana - 2, wagi własne - 3, estymator obliczony przez gęstość oraz dystrybuantę rozkładu normalnego standardowego - 4. 
+
+```{r, fig.height=4, echo = FALSE}
+#a
+library(ggplot2)
+dane <- data.frame(
+  estymator = rep(c("Średnia arytmetyczna", "Mediana", "Śred. waż. - wagi własne","Śred. waż. - gęst. i dystr."), each = 10000),
+  Wartosc_estymatora <- unlist(c(v1[1],v1[2],v1[3],v1[4]))
+)
+
+ggplot(dane, aes(x = estymator, y = Wartosc_estymatora)) +
+  geom_boxplot(outlier.shape = NA) +
+  theme(plot.title = element_text(hjust = 0.5)) +
+  labs(title = "Zakres zmienności różnych estymatorów wartości oczekiwanej \n rozkładu normalnego o wart. oczek. 1 i odch. stand 1", y = "Wartości", x = "Estymator") 
+```
+
+```{r, echo = FALSE}
+wariancje <- numeric(4)
+blendy_srednio_kw <- numeric(4)
+obciazenia <- numeric(4)
+for(i in 1:4){
+  wariancje[i] <- var(unlist(v1[i]))
+  blendy_srednio_kw[i] <- bl_sred(v1[i], 1)
+  obciazenia[i] <- obciaz(v1[i], 1)
+}
+dane <- data.frame(Estymator = c("Średnia arytmetyczna","Mediana","Wagi własne","Gęts. i dystr."), Wariancja = wariancje, Błąd_Średniokwadratowy = blendy_srednio_kw, Obciążenie = obciazenia)
+```
+
+```{r, echo = FALSE, message = FALSE, cache = F}
+knitr::kable(dane, caption = "Szacowana wariancja, błąd średniokwadratowy, oraz obciążanie każdego z estymatorów wartości oczekiwanej rozkładu normalnego o wart. oczek. 1 i odch. stand 1")
+
+```
+
+Z powyższego wykresu i tabeli możemy wywnioskować, że mediana estymatora wartości oczekiwanej dla estymatorów 1, 2, 3 wyliczanych na podstawie 50 elementowej próby z rozkładu normalnego $N(1,1)$, była zbliżona do 1. Jedynie dla estymatora 4 odbiega ona od tej wartości, wynosi ona około 0,96 - 0.97. Można się zastanowić, czy jest to właściwy estymator, skoro dla tak wielu doświadczeń (10 000) daje on wynik względnie istotnie różny. W przypadku wykresu pudełkowego pominęliśmy obserwacje odstające, ponieważ skupiamy się tutaj na ogólnej analizie wartości estymatorów. Najmniejszy rozstęp ćwiartkowy obserwujemy dla estymatora 4, jednak w przypadku jego odbiegającej mediany jest to niewielka poprawa jego skuteczności. Następnie rozstęp ten zwiększa się kolejno dla estymatorów 1, 3, 2. Pod względem analizy wariancji, błędu średniokwadratowego oraz obciążenia poza obciążeniem najlepiej wypada estymator 4, jednak ponownie możemy przypomnieć sobie tutaj o jego odbiegającej medianie, co sugeruje nieco inny zakres otrzymanych wartości. Średnia arytmetyczna (1), osiąga niższe wartości otrzymanych statystyk niż mediana (2) i wagi własne (3), co przy jej medianie zbliżonej do 1 pozwala przypuszczać, że może być ona w tym przypadku najlepszym estymatorem wartości oczekiwanej.
+
+
+```{r, fig.height=4, echo = FALSE}
+#b
+library(ggplot2)
+dane <- data.frame(
+  estymator = rep(c("Średnia arytmetyczna", "Mediana", "Śred. waż. - 
+                    wagi własne","Śred. waż. - gęst. i dystr."), each = 10000),
+  Wartosc_estymatora <- unlist(c(v2[1],v2[2],v2[3],v2[4]))
+)
+
+ggplot(dane, aes(x = estymator, y = Wartosc_estymatora)) +
+  geom_boxplot(outlier.shape = NA) +
+  theme(plot.title = element_text(hjust = 0.5)) +
+  labs(title = "Zakres zmienności różnych estymatorów wartości oczekiwanej \n rozkładu normalnego o wart. oczek. 4 i odch. stand 1", y = "Wartości", x = "Estymator") 
+
+```
+
+```{r, echo = FALSE}
+wariancje <- numeric(4)
+blendy_srednio_kw <- numeric(4)
+obciazenia <- numeric(4)
+for(i in 1:4){
+  wariancje[i] <- var(unlist(v2[i]))
+  blendy_srednio_kw[i] <- bl_sred(v2[i], 4)
+  obciazenia[i] <- obciaz(v2[i], 4)
+}
+dane <- data.frame(Estymator = c("Średnia arytmetyczna","Mediana","Wagi własne","Gęts. i dystr."), Wariancja = wariancje, Błąd_Średniokwadratowy = blendy_srednio_kw, Obciążenie = obciazenia)
+```
+
+```{r, echo = FALSE, message = FALSE, cache = F}
+knitr::kable(dane, caption = "Szacowana wariancja, błąd średniokwadratowy, oraz obciążanie każdego z estymatorów wartości oczekiwanej rozkładu normalnego o wart. oczek. 4 i odch. stand 1")
+
+```
+
+W przypadku tego wykresu i tabeli koncentrujących się na próbach z rozkładu normalnego $N(4,1)$, możemy stwierdzić, ze estymator (4) jest niewłaściwy, ponieważ jego mediana, osiągane wartości są z kompletnie innego zakresu, co znajduje potwierdzenie w względnie dużym obciążeniu oraz błędzie średniokwadratowym. Z pozostałych estymatorów Średnia arytmetyczna (1) wypada lepiej niż estymator stworzony poprzez własne wagi (3), który jest nieco lepszy od mediany (2). Widzimy to poprzez analizę rozstępu ćwiartkowego oraz analizę statystyk z tabeli (1) ma ich niższe wartości niż (3), który z kolei ma je niższe niż (2). Z wykresu pudełkowego możemy odczytać, że dla każdego z tych trzech estymatorów mediana wartości jest podobna i skupia się wokół wartości oczekiwanej 4.
+
+```{r, fig.height=4, echo = FALSE}
+#c
+library(ggplot2)
+dane <- data.frame(
+  estymator = rep(c("Średnia arytmetyczna", "Mediana", "Śred. waż. - wagi własne","Śred. waż. - gęst. i dystr."), each = 10000),
+  Wartosc_estymatora <- unlist(c(v3[1],v3[2],v3[3],v3[4]))
+)
+
+ggplot(dane, aes(x = estymator, y = Wartosc_estymatora)) +
+  geom_boxplot(outlier.shape = NA) +
+  theme(plot.title = element_text(hjust = 0.5)) +
+  labs(title = "Zakres zmienności różnych estymatorów wartości oczekiwanej \n rozkładu normalnego o wart. oczek. 1 i odch. stand 4", y = "Wartości", x = "Estymator") 
+```
+
+```{r, echo = FALSE}
+wariancje <- numeric(4)
+blendy_srednio_kw <- numeric(4)
+obciazenia <- numeric(4)
+for(i in 1:4){
+  wariancje[i] <- var(unlist(v3[i]))
+  blendy_srednio_kw[i] <- bl_sred(v3[i], 1)
+  obciazenia[i] <- obciaz(v3[i], 1)
+}
+dane <- data.frame(Estymator = c("Średnia arytmetyczna","Mediana","Wagi własne","Gęts. i dystr."), Wariancja = wariancje, Błąd_Średniokwadratowy = blendy_srednio_kw, Obciążenie = obciazenia)
+```
+
+```{r, echo = FALSE, message = FALSE, cache = F}
+knitr::kable(dane, caption = "Szacowana wariancja, błąd średniokwadratowy, oraz obciążanie każdego z estymatorów wartości oczekiwanej rozkładu normalnego o wart. oczek. 1 i odch. stand 4")
+
+```
+
+Ponownie analizując ostatni wykres pudełkowy oraz tabele dla rozkładu $N(1,4)$ otrzymujemy brak dopasowania estymatora (4). Najmniejszy rozstęp ćwiartkowy uzyskujemy dla średniej arytmetycznej, potem, dla wag własnych oraz mediany. Wartość mediany wartości estymatorów koncentruje się wokół 1 poza estymatorem (4). Analizując wariancje, błąd średniokwadratowy oraz obciążanie spośród estymatorów (1), (2), (3) ogólnie najmniejsze wartości osiąga estymator 1.
+
+Podsumowując średnia arytmetyczna wydaje się być najlepszym estymatorem wartości oczekiwanej dla rozkładu normalnego dla także dla zmiennych wartości wartości oczekiwanej oraz wariancji. Konstrukcja estymatora poprzez wybór własnych wag może się okazać lepsza niż estymowanie przez medianę. Estymator, którego wagi są złożeniem gęstości i odwrotnej dystrybuanty standardowego rozkładu normalnego nie estymuje w żaden sposób wartości oczekiwanej szukanego rozkładu normalnego.
+
+# zad 5
+
+Będziemy teraz chcieli wygenerować 50 obserwacji z rozkładu logistycznego $L(\theta,\sigma)$ z parametrem przesunięcia $\theta$ i skali $\sigma$ dla:
+
+(a) $\theta = 1, \sigma = 1$
+(b) $\theta = 4, \sigma = 1$
+(c) $\theta = 1, \sigma = 2$
+
+Na podstawie wygenerowanej próby szacować będziemy wartość estymatora największej wiarygodności (ENW) parametru $\theta$ - obliczenie go z równania opisującego pierwszą pochodną funkcji logarytmu wiarogodności jest praktycznie niemożliwe. Zastanowimy się nad wyborem punktu początkowego oraz liczbą kroków w algorytmie - zastosujemy Metodę Newtona. Powtórzymy dane doświadczenie 10 000 razy. Na jego podstawie szacować będziemy wariancję, błąd średniokwadratowy oraz obciążenie estymatora. Przeanalizujemy uzyskane wyniki.
+
+Jako punkt początkowy dla Metody Newtona wybieramy średnią, z każdej 50 elementowej próby - rozkład logistyczny jest podobny do normalnego, stąd średnia powinna być blisko szukanego maksimum. Nie ustalamy dokładnie liczby kroków w algorytmie, ale za to przerywamy algorytm wtedy, gdy pochodna logarytmu funkcji wiarygodności dla rozkładu logistycznego będzie mniejsza równa 10^(-6) lub liczba kroków osiągnie 10. Nie musimy sprawdzać warunku, czy osiągnięte może być maksimum - druga pochodna funkcji logarytmu wiarogodności jest zawsze ujemna.
+
+```{r, echo = FALSE}
+l_prim <- function(proba, teta, sigma){
+  length(proba) / sigma - 2 * sum((exp(-(proba - teta)/sigma)) / (sigma * (1 + exp(-(proba - teta)/sigma))))
+}
+```
+
+```{r, echo = FALSE}
+l_bis <- function(proba, teta, sigma){
+  -2 * sum((exp(-(proba - teta)/sigma)) / (sigma^2 * (1 + exp(-(proba - teta)/sigma))^2))
+}
+```
+
+```{r, echo = FALSE}
+Newton_method <- function(begin, epsilon, proba, sigma){
+  iter <- 0
+  while(abs(l_prim(proba, begin, sigma)) > epsilon & iter < 10){
+    begin <- begin - l_prim(proba, begin, sigma) / l_bis(proba, begin, sigma)
+    iter <- iter + 1
+  }
+  v <- c(begin,iter)
+  return(v)
+}
+```
+
+
+```{r, echo = FALSE}
+wariancje <- numeric(3)
+blendy_srednio_kw <- numeric(3)
+obciazenia <- numeric(3)
+srednie <- numeric(3)
+```
+
+
+```{r, echo = FALSE}
+#a
+n <- 50
+a <- numeric(10000)
+kroki <- 0
+for(i in 1:10000){
+  proba <- rlogis(n, 1, 1)
+  para <- Newton_method(mean(proba), 10^(-6), proba, 1)
+  a[i] <- para[1]
+  kroki <- kroki + para[2]
+}
+kroki <- kroki / 10000
+srednie[1] <- mean(a)
+wariancje[1] <- var(a)
+blendy_srednio_kw[1] <- bl_sred(a, 1)
+obciazenia[1] <- obciaz(a, 1)
+```
+
+```{r, echo = FALSE}
+#b
+n <- 50
+a <- numeric(10000)
+kroki <- 0
+for(i in 1:10000){
+  proba <- rlogis(n, 4, 1)
+  para <- Newton_method(mean(proba), 10^(-6), proba, 1)
+  a[i] <- para[1]
+  kroki <- kroki + para[2]
+}
+kroki <- kroki / 10000
+srednie[2] <- mean(a)
+wariancje[2] <- var(a)
+blendy_srednio_kw[2] <- bl_sred(a, 4)
+obciazenia[2] <- obciaz(a, 4)
+```
+
+```{r, echo = FALSE}
+#c
+n <- 50
+a <- numeric(10000)
+kroki <- 0
+for(i in 1:10000){
+  proba <- rlogis(n, 1, 2)
+  para <- Newton_method(mean(proba), 10^(-6), proba, 2)
+  a[i] <- para[1]
+  kroki <- kroki + para[2]
+}
+kroki <- kroki / 10000
+srednie[3] <- mean(a)
+wariancje[3] <- var(a)
+blendy_srednio_kw[3] <- bl_sred(a, 1)
+obciazenia[3] <- obciaz(a, 1)
+```
+
+```{r, echo = FALSE}
+dane <- data.frame(Rodzaj_rozkładu_logistycznego = c("Przesunięcie: 1, skala: 1", "Przesunięcie: 4, skala: 1", "Przesunięcie: 1, skala: 2"), Wariancja = wariancje, Błąd_Średniokwadratowy = blendy_srednio_kw, Obciążenie = obciazenia)
+```
+
+```{r, echo = FALSE, message = FALSE, cache = F}
+knitr::kable(dane, caption = "Szacowana wariancja, błąd średniokwadratowy, oraz obciążanie każdego z estymatorów estymatora największej wiarygodności dla rozkładu logistycznego")
+
+```
+
+W celu oszacowania (ENW) parametru $\theta$ wzięliśmy średnią z 10000 symulacji. Otrzymaliśmy dla kolejno rozkładów (a), (b), (c): `r round(srednie,4)`. Analizując powyższą tabelę możemy stwierdzić, że dla rozkładów z (a) i (b) uzyskaliśmy znacznie niższą wariancję oraz błąd średniokwadratowy niż dla rozkładu (c). Rozkład (c) ma parametr skali $\sigma = 2$, co oznacza, że więcej obserwacji odstaje, są większe "ogony" stąd większe wartości tych statystyk. Nie potrzebowaliśmy wielu kroków (średnio `r kroki`), więc metoda ta okazała się być skuteczna.
+
+# zad 6
+
+Będziemy teraz chcieli wygenerować 50 obserwacji z rozkładu Cauchy'ego $C(\theta,\sigma)$ z parametrem przesunięcia $\theta$ i skali $\sigma$ dla:
+
+(a) $\theta = 1, \sigma = 1$
+(b) $\theta = 4, \sigma = 1$
+(c) $\theta = 1, \sigma = 2$
+
+Na podstawie wygenerowanej próby szacować będziemy wartość estymatora największej wiarygodności (ENW) parametru $\theta$. Podobnie osiągnięcie jego wartości przez równanie przyrównujące pierwszą pochodną funkcji logarytmu wiarogodności do zera, tak samo jak w przypadku rozkładu logistycznego jest bezcelowe. Zastanowimy się nad wyborem punktu początkowego oraz liczbą kroków w algorytmie - zastosujemy Metodę Newtona. Powtórzymy dane doświadczenie 10 000 razy. Na jego podstawie szacować będziemy wariancję, błąd średniokwadratowy oraz obciążenie estymatora. Przeanalizujemy uzyskane wyniki.
+
+Jako punkt początkowy dla Metody Newtona wybieramy medianę, z każdej 50 elementowej próby - rozkład Cauchy'ego ma nieokreśloną wartość oczekiwaną oraz jest podobny do rozkładu Laplace'a, dla którego ENW jest mediana. Tak jak poprzednio nie ustalamy dokładnie liczby kroków w algorytmie, ale za to przerywamy algorytm wtedy, gdy pochodna logarytmu funkcji wiarygodności dla rozkładu Cauchy'ego będzie mniejsza równa 10^(-6) albo liczba kroków osiągnie 10. Jednak druga pochodna funkcji logarytmu wiarogodności nie zawsze jest ujemna - przy estymacji będziemy odrzucać te wyniki, które będą dodatnie.
+
+```{r, echo = FALSE}
+l_prim2 <- function(proba, teta, sigma){
+  2*sum((proba-teta)/(sigma^2+(proba-teta)^2))
+}
+```
+
+```{r, echo = FALSE}
+l_bis2 <- function(proba, teta, sigma){
+  2*sum((((-1)*(sigma^2 + (proba - teta)^2))+2*(proba-teta)^2)/(sigma^2 + (proba - teta)^2)^2)
+}
+```
+
+```{r, echo = FALSE}
+Newton_method <- function(begin, epsilon, proba, sigma){
+  iter <- 0
+  while(abs(l_prim2(proba, begin, sigma)) > epsilon & iter < 10){
+    begin <- begin - l_prim2(proba, begin, sigma) / l_bis2(proba, begin, sigma)
+    iter <- iter + 1
+  }
+  converged <- (abs(l_prim2(proba, begin, sigma)) < epsilon & l_bis2(proba, begin, sigma) < 0)
+  v <- c(begin,iter,converged)
+  return(v)
+}
+```
+
+```{r, echo = FALSE}
+wariancje <- numeric(3)
+blendy_srednio_kw <- numeric(3)
+obciazenia <- numeric(3)
+srednie <- numeric(3)
+zbiegajace <- numeric(3)
+```
+
+```{r, echo = FALSE}
+#a
+n <- 50
+a <- numeric(10000)
+kroki <- 0
+wektor <- rep(FALSE, 10000)
+for(i in 1:10000){
+  proba <- rcauchy(n, 1, 1)
+  para <- Newton_method(median(proba), 10^(-6), proba, 1)
+  a[i] <- para[1]
+  kroki <- kroki + para[2]
+  wektor[i] <- para[3]
+}
+kroki <- kroki / 10000
+dlugosc_poprawnych <- length(which(wektor==TRUE))
+poprawne <- numeric(dlugosc_poprawnych)
+k <- 1
+for(i in 1:10000){
+  if(wektor[i] == TRUE){
+    poprawne[k] <- a[i]
+    k <- k + 1
+  }
+}
+srednie[1] <- mean(poprawne)
+wariancje[1] <- var(poprawne)
+blendy_srednio_kw[1] <- bl_sred(poprawne, 1)
+obciazenia[1] <- obciaz(poprawne, 1)
+zbiegajace[1] <- k - 1
+```
+
+```{r, echo = FALSE}
+#b
+n <- 50
+a <- numeric(10000)
+kroki <- 0
+wektor <- rep(FALSE, 10000)
+for(i in 1:10000){
+  proba <- rcauchy(n, 4, 1)
+  para <- Newton_method(median(proba), 10^(-6), proba, 1)
+  a[i] <- para[1]
+  kroki <- kroki + para[2]
+  wektor[i] <- para[3]
+}
+kroki <- kroki / 10000
+dlugosc_poprawnych <- length(which(wektor==TRUE))
+poprawne <- numeric(dlugosc_poprawnych)
+k <- 1
+for(i in 1:10000){
+  if(wektor[i] == TRUE){
+    poprawne[k] <- a[i]
+    k <- k + 1
+  }
+}
+srednie[2] <- mean(poprawne)
+wariancje[2] <- var(poprawne)
+blendy_srednio_kw[2] <- bl_sred(poprawne, 4)
+obciazenia[2] <- obciaz(poprawne, 4)
+zbiegajace[2] <- k - 1
+```
+
+```{r, echo = FALSE}
+#c
+n <- 50
+a <- numeric(10000)
+kroki <- 0
+wektor <- rep(FALSE, 10000)
+for(i in 1:10000){
+  proba <- rcauchy(n, 1, 2)
+  para <- Newton_method(median(proba), 10^(-6), proba, 2)
+  a[i] <- para[1]
+  kroki <- kroki + para[2]
+  wektor[i] <- para[3]
+}
+kroki <- kroki / 10000
+dlugosc_poprawnych <- length(which(wektor==TRUE))
+poprawne <- numeric(dlugosc_poprawnych)
+k <- 1
+for(i in 1:10000){
+  if(wektor[i] == TRUE){
+    poprawne[k] <- a[i]
+    k <- k + 1
+  }
+}
+srednie[3] <- mean(poprawne)
+wariancje[3] <- var(poprawne)
+blendy_srednio_kw[3] <- bl_sred(poprawne, 1)
+obciazenia[3] <- obciaz(poprawne, 1)
+zbiegajace[3] <- k - 1
+```
+
+```{r, echo = FALSE}
+dane <- data.frame(Rodzaj_rozkładu_Cauchyego = c("Przesunięcie: 1, skala: 1", "Przesunięcie: 4, skala: 1", "Przesunięcie: 1, skala: 2"), Wariancja = wariancje, Błąd_Średniokwadratowy = blendy_srednio_kw, Obciążenie = obciazenia, Obserwacje_zbiegające = zbiegajace)
+```
+
+```{r, echo = FALSE, message = FALSE, cache = F}
+knitr::kable(dane, caption = "Szacowana wariancja, błąd średniokwadratowy, oraz obciążanie każdego z estymatorów estymatora największej wiarygodności dla rozkładu Cauchy'ego")
+```
+
+Z powyższej tabeli możemy odczytać, że dla (a) oraz (b) oszacowano podobną wariancję oraz błąd średniokwadratowy. Pozostanie przy przesunięciu 1, ale zwiększenie skali do 2 (c) spowodowało największe zmiany - czterokrotnie większa wariancja oraz błąd średniokwadratowy niż w przypadku (a) i (b). Można to ponownie tłumaczyć większymi "ogonami" takiego rozkładu. Zdecydowanie najmniejsze obciążenie co do modułu osiągnięto dla rozkładu (b).
+
+# zad 7
+Powtórzymy dany eksperyment numeryczny dla $n = 20,100$. Porównamy uzyskane wyniki z poprzednimi.
+
+## Logistyczny $n=20,100$
+
+```{r, echo = FALSE}
+l_prim <- function(proba, teta, sigma){
+  length(proba) / sigma - 2 * sum((exp(-(proba - teta)/sigma)) / (sigma * (1 + exp(-(proba - teta)/sigma))))
+}
+```
+
+```{r, echo = FALSE}
+l_bis <- function(proba, teta, sigma){
+  -2 * sum((exp(-(proba - teta)/sigma)) / (sigma^2 * (1 + exp(-(proba - teta)/sigma))^2))
+}
+```
+
+```{r, echo = FALSE}
+Newton_method <- function(begin, epsilon, proba, sigma){
+  iter <- 0
+  while(abs(l_prim(proba, begin, sigma)) > epsilon & iter < 10){
+    begin <- begin - l_prim(proba, begin, sigma) / l_bis(proba, begin, sigma)
+    iter <- iter + 1
+  }
+  v <- c(begin,iter)
+  return(v)
+}
+```
+
+```{r, echo = FALSE}
+wariancje <- numeric(3)
+blendy_srednio_kw <- numeric(3)
+obciazenia <- numeric(3)
+srednie <- numeric(3)
+```
+
+
+```{r, echo = FALSE}
+#a
+n <- 20
+a <- numeric(10000)
+kroki <- 0
+for(i in 1:10000){
+  proba <- rlogis(n, 1, 1)
+  para <- Newton_method(mean(proba), 10^(-6), proba, 1)
+  a[i] <- para[1]
+  kroki <- kroki + para[2]
+}
+kroki <- kroki / 10000
+srednie[1] <- mean(a)
+wariancje[1] <- var(a)
+blendy_srednio_kw[1] <- bl_sred(a, 1)
+obciazenia[1] <- obciaz(a, 1)
+```
+
+```{r, echo = FALSE}
+#b
+n <- 20
+a <- numeric(10000)
+kroki <- 0
+for(i in 1:10000){
+  proba <- rlogis(n, 4, 1)
+  para <- Newton_method(mean(proba), 10^(-6), proba, 1)
+  a[i] <- para[1]
+  kroki <- kroki + para[2]
+}
+kroki <- kroki / 10000
+srednie[2] <- mean(a)
+wariancje[2] <- var(a)
+blendy_srednio_kw[2] <- bl_sred(a, 4)
+obciazenia[2] <- obciaz(a, 4)
+```
+
+```{r, echo = FALSE}
+#c
+n <- 20
+a <- numeric(10000)
+kroki <- 0
+for(i in 1:10000){
+  proba <- rlogis(n, 1, 2)
+  para <- Newton_method(mean(proba), 10^(-6), proba, 2)
+  a[i] <- para[1]
+  kroki <- kroki + para[2]
+}
+kroki <- kroki / 10000
+srednie[3] <- mean(a)
+wariancje[3] <- var(a)
+blendy_srednio_kw[3] <- bl_sred(a, 1)
+obciazenia[3] <- obciaz(a, 1)
+```
+
+```{r, echo = FALSE}
+dane <- data.frame(Rodzaj_rozkładu_logistycznego = c("Przesunięcie: 1, skala: 1", "Przesunięcie: 4, skala: 1", "Przesunięcie: 1, skala: 2"), Wariancja = wariancje, Błąd_Średniokwadratowy = blendy_srednio_kw, Obciążenie = obciazenia)
+```
+
+```{r, echo = FALSE, message = FALSE, cache = F}
+knitr::kable(dane, caption = "Szacowana wariancja, błąd średniokwadratowy, oraz obciążanie każdego z estymatorów estymatora największej wiarygodności dla rozkładu logistycznego (n=20)")
+
+```
+
+
+
+
+
+```{r, echo = FALSE}
+l_prim <- function(proba, teta, sigma){
+  length(proba) / sigma - 2 * sum((exp(-(proba - teta)/sigma)) / (sigma * (1 + exp(-(proba - teta)/sigma))))
+}
+```
+
+```{r, echo = FALSE}
+l_bis <- function(proba, teta, sigma){
+  -2 * sum((exp(-(proba - teta)/sigma)) / (sigma^2 * (1 + exp(-(proba - teta)/sigma))^2))
+}
+```
+
+```{r, echo = FALSE}
+Newton_method <- function(begin, epsilon, proba, sigma){
+  iter <- 0
+  while(abs(l_prim(proba, begin, sigma)) > epsilon & iter < 10){
+    begin <- begin - l_prim(proba, begin, sigma) / l_bis(proba, begin, sigma)
+    iter <- iter + 1
+  }
+  v <- c(begin,iter)
+  return(v)
+}
+```
+
+```{r, echo = FALSE}
+wariancje <- numeric(3)
+blendy_srednio_kw <- numeric(3)
+obciazenia <- numeric(3)
+srednie <- numeric(3)
+```
+
+
+```{r, echo = FALSE}
+#a
+n <- 100
+a <- numeric(10000)
+kroki <- 0
+for(i in 1:10000){
+  proba <- rlogis(n, 1, 1)
+  para <- Newton_method(mean(proba), 10^(-6), proba, 1)
+  a[i] <- para[1]
+  kroki <- kroki + para[2]
+}
+kroki <- kroki / 10000
+srednie[1] <- mean(a)
+wariancje[1] <- var(a)
+blendy_srednio_kw[1] <- bl_sred(a, 1)
+obciazenia[1] <- obciaz(a, 1)
+```
+
+```{r, echo = FALSE}
+#b
+n <- 100
+a <- numeric(10000)
+kroki <- 0
+for(i in 1:10000){
+  proba <- rlogis(n, 4, 1)
+  para <- Newton_method(mean(proba), 10^(-6), proba, 1)
+  a[i] <- para[1]
+  kroki <- kroki + para[2]
+}
+kroki <- kroki / 10000
+srednie[2] <- mean(a)
+wariancje[2] <- var(a)
+blendy_srednio_kw[2] <- bl_sred(a, 4)
+obciazenia[2] <- obciaz(a, 4)
+```
+
+```{r, echo = FALSE}
+#c
+n <- 100
+a <- numeric(10000)
+kroki <- 0
+for(i in 1:10000){
+  proba <- rlogis(n, 1, 2)
+  para <- Newton_method(mean(proba), 10^(-6), proba, 2)
+  a[i] <- para[1]
+  kroki <- kroki + para[2]
+}
+kroki <- kroki / 10000
+srednie[3] <- mean(a)
+wariancje[3] <- var(a)
+blendy_srednio_kw[3] <- bl_sred(a, 1)
+obciazenia[3] <- obciaz(a, 1)
+```
+
+```{r, echo = FALSE}
+dane <- data.frame(Rodzaj_rozkładu_logistycznego = c("Przesunięcie: 1, skala: 1", "Przesunięcie: 4, skala: 1", "Przesunięcie: 1, skala: 2"), Wariancja = wariancje, Błąd_Średniokwadratowy = blendy_srednio_kw, Obciążenie = obciazenia)
+```
+
+```{r, echo = FALSE, message = FALSE, cache = F}
+knitr::kable(dane, caption = "Szacowana wariancja, błąd średniokwadratowy, oraz obciążanie każdego z estymatorów estymatora największej wiarygodności dla rozkładu logistycznego (n=100)")
+
+```
+
+Z powyższych tabel można odczytać, że zwiększenie rozmiaru próby do 100 i zmniejszenie do 20, odpowiednio zwiększa oraz zmniejsza wartości statystyk w tabeli. Analizując dokładniej wartości można przypuszczać, że jest to wzrost wprost proporcjonalny.
+
+```{r, echo = FALSE}
+l_prim2 <- function(proba, teta, sigma){
+  2*sum((proba-teta)/(sigma^2+(proba-teta)^2))
+}
+```
+
+```{r, echo = FALSE}
+l_bis2 <- function(proba, teta, sigma){
+  2*sum((((-1)*(sigma^2 + (proba - teta)^2))+2*(proba-teta)^2)/(sigma^2 + (proba - teta)^2)^2)
+}
+```
+
+```{r, echo = FALSE}
+Newton_method <- function(begin, epsilon, proba, sigma){
+  iter <- 0
+  while(abs(l_prim2(proba, begin, sigma)) > epsilon & iter < 10){
+    begin <- begin - l_prim2(proba, begin, sigma) / l_bis2(proba, begin, sigma)
+    iter <- iter + 1
+  }
+  converged <- (abs(l_prim2(proba, begin, sigma)) < epsilon & l_bis2(proba, begin, sigma) < 0)
+  v <- c(begin,iter,converged)
+  return(v)
+}
+```
+
+```{r, echo = FALSE}
+wariancje <- numeric(3)
+blendy_srednio_kw <- numeric(3)
+obciazenia <- numeric(3)
+srednie <- numeric(3)
+zbiegajace <- numeric(3)
+```
+
+```{r, echo = FALSE}
+#a
+n <- 20
+a <- numeric(10000)
+kroki <- 0
+wektor <- rep(FALSE, 10000)
+for(i in 1:10000){
+  proba <- rcauchy(n, 1, 1)
+  para <- Newton_method(median(proba), 10^(-6), proba, 1)
+  a[i] <- para[1]
+  kroki <- kroki + para[2]
+  wektor[i] <- para[3]
+}
+kroki <- kroki / 10000
+dlugosc_poprawnych <- length(which(wektor==TRUE))
+poprawne <- numeric(dlugosc_poprawnych)
+k <- 1
+for(i in 1:10000){
+  if(wektor[i] == TRUE){
+    poprawne[k] <- a[i]
+    k <- k + 1
+  }
+}
+srednie[1] <- mean(poprawne)
+wariancje[1] <- var(poprawne)
+blendy_srednio_kw[1] <- bl_sred(poprawne, 1)
+obciazenia[1] <- obciaz(poprawne, 1)
+zbiegajace[1] <- k - 1
+```
+
+```{r, echo = FALSE}
+#b
+n <- 20
+a <- numeric(10000)
+kroki <- 0
+wektor <- rep(FALSE, 10000)
+for(i in 1:10000){
+  proba <- rcauchy(n, 4, 1)
+  para <- Newton_method(median(proba), 10^(-6), proba, 1)
+  a[i] <- para[1]
+  kroki <- kroki + para[2]
+  wektor[i] <- para[3]
+}
+kroki <- kroki / 10000
+dlugosc_poprawnych <- length(which(wektor==TRUE))
+poprawne <- numeric(dlugosc_poprawnych)
+k <- 1
+for(i in 1:10000){
+  if(wektor[i] == TRUE){
+    poprawne[k] <- a[i]
+    k <- k + 1
+  }
+}
+srednie[2] <- mean(poprawne)
+wariancje[2] <- var(poprawne)
+blendy_srednio_kw[2] <- bl_sred(poprawne, 4)
+obciazenia[2] <- obciaz(poprawne, 4)
+zbiegajace[2] <- k - 1
+```
+
+```{r, echo = FALSE}
+#c
+n <- 20
+a <- numeric(10000)
+kroki <- 0
+wektor <- rep(FALSE, 10000)
+for(i in 1:10000){
+  proba <- rcauchy(n, 1, 2)
+  para <- Newton_method(median(proba), 10^(-6), proba, 2)
+  a[i] <- para[1]
+  kroki <- kroki + para[2]
+  wektor[i] <- para[3]
+}
+kroki <- kroki / 10000
+dlugosc_poprawnych <- length(which(wektor==TRUE))
+poprawne <- numeric(dlugosc_poprawnych)
+k <- 1
+for(i in 1:10000){
+  if(wektor[i] == TRUE){
+    poprawne[k] <- a[i]
+    k <- k + 1
+  }
+}
+srednie[3] <- mean(poprawne)
+wariancje[3] <- var(poprawne)
+blendy_srednio_kw[3] <- bl_sred(poprawne, 1)
+obciazenia[3] <- obciaz(poprawne, 1)
+zbiegajace[3] <- k - 1
+```
+
+```{r, echo = FALSE}
+dane <- data.frame(Rodzaj_rozkładu_Cauchyego = c("Przesunięcie: 1, skala: 1", "Przesunięcie: 4, skala: 1", "Przesunięcie: 1, skala: 2"), Wariancja = wariancje, Błąd_Średniokwadratowy = blendy_srednio_kw, Obciążenie = obciazenia, Obserwacje_zbiegające = zbiegajace)
+```
+
+```{r, echo = FALSE, message = FALSE, cache = F}
+knitr::kable(dane, caption = "Szacowana wariancja, błąd średniokwadratowy, oraz obciążanie każdego z estymatorów estymatora największej wiarygodności dla rozkładu Cauchy'ego (n=20)")
+```
+
+
+
+
+
+```{r, echo = FALSE}
+l_prim2 <- function(proba, teta, sigma){
+  2*sum((proba-teta)/(sigma^2+(proba-teta)^2))
+}
+```
+
+```{r, echo = FALSE}
+l_bis2 <- function(proba, teta, sigma){
+  2*sum((((-1)*(sigma^2 + (proba - teta)^2))+2*(proba-teta)^2)/(sigma^2 + (proba - teta)^2)^2)
+}
+```
+
+```{r, echo = FALSE}
+Newton_method <- function(begin, epsilon, proba, sigma){
+  iter <- 0
+  while(abs(l_prim2(proba, begin, sigma)) > epsilon & iter < 10){
+    begin <- begin - l_prim2(proba, begin, sigma) / l_bis2(proba, begin, sigma)
+    iter <- iter + 1
+  }
+  converged <- (abs(l_prim2(proba, begin, sigma)) < epsilon & l_bis2(proba, begin, sigma) < 0)
+  v <- c(begin,iter,converged)
+  return(v)
+}
+```
+
+```{r, echo = FALSE}
+wariancje <- numeric(3)
+blendy_srednio_kw <- numeric(3)
+obciazenia <- numeric(3)
+srednie <- numeric(3)
+zbiegajace <- numeric(3)
+```
+
+```{r, echo = FALSE}
+#a
+n <- 100
+a <- numeric(10000)
+kroki <- 0
+wektor <- rep(FALSE, 10000)
+for(i in 1:10000){
+  proba <- rcauchy(n, 1, 1)
+  para <- Newton_method(median(proba), 10^(-6), proba, 1)
+  a[i] <- para[1]
+  kroki <- kroki + para[2]
+  wektor[i] <- para[3]
+}
+kroki <- kroki / 10000
+dlugosc_poprawnych <- length(which(wektor==TRUE))
+poprawne <- numeric(dlugosc_poprawnych)
+k <- 1
+for(i in 1:10000){
+  if(wektor[i] == TRUE){
+    poprawne[k] <- a[i]
+    k <- k + 1
+  }
+}
+srednie[1] <- mean(poprawne)
+wariancje[1] <- var(poprawne)
+blendy_srednio_kw[1] <- bl_sred(poprawne, 1)
+obciazenia[1] <- obciaz(poprawne, 1)
+zbiegajace[1] <- k - 1
+```
+
+```{r, echo = FALSE}
+#b
+n <- 100
+a <- numeric(10000)
+kroki <- 0
+wektor <- rep(FALSE, 10000)
+for(i in 1:10000){
+  proba <- rcauchy(n, 4, 1)
+  para <- Newton_method(median(proba), 10^(-6), proba, 1)
+  a[i] <- para[1]
+  kroki <- kroki + para[2]
+  wektor[i] <- para[3]
+}
+kroki <- kroki / 10000
+dlugosc_poprawnych <- length(which(wektor==TRUE))
+poprawne <- numeric(dlugosc_poprawnych)
+k <- 1
+for(i in 1:10000){
+  if(wektor[i] == TRUE){
+    poprawne[k] <- a[i]
+    k <- k + 1
+  }
+}
+srednie[2] <- mean(poprawne)
+wariancje[2] <- var(poprawne)
+blendy_srednio_kw[2] <- bl_sred(poprawne, 4)
+obciazenia[2] <- obciaz(poprawne, 4)
+zbiegajace[2] <- k - 1
+```
+
+```{r, echo = FALSE}
+#c
+n <- 100
+a <- numeric(10000)
+kroki <- 0
+wektor <- rep(FALSE, 10000)
+for(i in 1:10000){
+  proba <- rcauchy(n, 1, 2)
+  para <- Newton_method(median(proba), 10^(-6), proba, 2)
+  a[i] <- para[1]
+  kroki <- kroki + para[2]
+  wektor[i] <- para[3]
+}
+kroki <- kroki / 10000
+dlugosc_poprawnych <- length(which(wektor==TRUE))
+poprawne <- numeric(dlugosc_poprawnych)
+k <- 1
+for(i in 1:10000){
+  if(wektor[i] == TRUE){
+    poprawne[k] <- a[i]
+    k <- k + 1
+  }
+}
+srednie[3] <- mean(poprawne)
+wariancje[3] <- var(poprawne)
+blendy_srednio_kw[3] <- bl_sred(poprawne, 1)
+obciazenia[3] <- obciaz(poprawne, 1)
+zbiegajace[3] <- k - 1
+```
+
+```{r, echo = FALSE}
+dane <- data.frame(Rodzaj_rozkładu_Cauchyego = c("Przesunięcie: 1, skala: 1", "Przesunięcie: 4, skala: 1", "Przesunięcie: 1, skala: 2"), Wariancja = wariancje, Błąd_Średniokwadratowy = blendy_srednio_kw, Obciążenie = obciazenia, Obserwacje_zbiegające = zbiegajace)
+```
+
+```{r, echo = FALSE, message = FALSE, cache = F}
+knitr::kable(dane, caption = "Szacowana wariancja, błąd średniokwadratowy, oraz obciążanie każdego z estymatorów estymatora największej wiarygodności dla rozkładu Cauchy'ego (n=100)")
+```
+
+Dla prób 20 oraz 100 elementowych należących do rozkładu Cauchy'ego mamy podobnie jak dla rozkładu logistycznego, odpowiednio wzrost oraz zmniejszenie wartości statystyk: wariancji oraz błędu średniokwadratowego. Przy dokładnym przyjrzeniu się tym wartościom można spostrzec zależność wprost proporcjonalną wprost między rozmiarem próby a wielkością danych statystyk.
+
